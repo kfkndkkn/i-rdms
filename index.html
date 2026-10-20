@@ -24,8 +24,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <!-- Supabase JS SDK[cite: 2] -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>[cite: 2]
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         * { box-sizing: border-box; }
@@ -166,7 +166,7 @@
             </div>
         </div>
 
-        <!-- Tombol Login Supabase (Menggantikan Login Eksisting) -->
+        <!-- Tombol Login Supabase -->
         <button id="btn-login-admin" onclick="openLoginModal()" class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1">
             <i class="fa-solid fa-user-lock text-amber-300"></i>
             <span id="label-login-btn">Login</span>
@@ -254,7 +254,7 @@
         <marquee id="tickerText" scrollamount="6"></marquee>
     </div>
 
-    <!-- Modal Login Supabase (Menggantikan Login Modal Lama) -->
+    <!-- Modal Login Supabase -->
     <div id="login-modal" class="hidden fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full overflow-hidden transition-all transform scale-100">
             <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
@@ -357,10 +357,10 @@
 
     <!-- JavaScript Logic -->
     <script>
-        // SUPABASE CLIENT CONFIGURATION[cite: 2]
-        const SUPABASE_URL = 'https://kedpmwibkkzvnuhlszeu.supabase.co';[cite: 2]
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZHBtd2lia2t6dm51aGxzemV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Mjc2NDgsImV4cCI6MjEwNzUwMzY0OH0.AMLnYZmWaoFGcNEK6j19-3cdJgCAJYh_W4dsGhc5gRg';[cite: 2]
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);[cite: 2]
+        // SUPABASE CLIENT CONFIGURATION
+        const SUPABASE_URL = 'https://kedpmwibkkzvnuhlszeu.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZHBtd2lia2t6dm51aGxzemV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Mjc2NDgsImV4cCI6MjEwNzUwMzY0OH0.AMLnYZmWaoFGcNEK6j19-3cdJgCAJYh_W4dsGhc5gRg';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // INDEX & CACHE
         window.stationIndex = {};
@@ -1094,21 +1094,18 @@
         // SIDEBAR TOGGLE & RUNNING TICKER RESIZE FIX
         function toggleSidebar(){
             const sidebar = document.getElementById("sidePanel");
-            const showBtn = document.getElementById("show-sidebar-btn");
             const ticker = document.getElementById("statusTicker");
 
             const isCollapsed = sidebar.classList.contains("-translate-x-full");
 
             if(isCollapsed){
                 sidebar.classList.remove("-translate-x-full");
-                if(showBtn) showBtn.classList.add("-translate-x-12", "opacity-0", "pointer-events-none");
                 
                 const sidebarWidth = sidebar.offsetWidth || 384;
                 ticker.style.left = sidebarWidth + "px";
                 ticker.style.width = `calc(100% - ${sidebarWidth}px)`;
             }else{
                 sidebar.classList.add("-translate-x-full");
-                if(showBtn) showBtn.classList.remove("-translate-x-12", "opacity-0", "pointer-events-none");
                 
                 ticker.style.left = "0px";
                 ticker.style.width = "100%";
@@ -1208,7 +1205,7 @@
             document.getElementById("tickerText").innerHTML = msg;
         }
 
-        // SUPABASE AUTHENTICATION FUNCTIONS[cite: 2]
+        // SUPABASE AUTHENTICATION FUNCTIONS
         async function checkSession() {
             const { data: { session } } = await supabaseClient.auth.getSession();
             updateAuthUI(session);
@@ -1292,6 +1289,13 @@
             loadCSV();
             updateSidePanel();
 
+            // Memastikan peta Leaflet merender ulang ukuran dengan benar setelah DOM dimuat
+            setTimeout(() => {
+                if (map) {
+                    map.invalidateSize();
+                }
+            }, 300);
+
             // Penyesuaian posisi awal ticker saat panel tertutup default
             const sidebar = document.getElementById("sidePanel");
             const ticker = document.getElementById("statusTicker");
@@ -1312,6 +1316,7 @@
             map.on("zoomend", loadCSV);
             window.addEventListener("resize", ()=>{ 
                 drawAvgChart(); 
+                if (map) map.invalidateSize();
                 const isCollapsed = sidebar.classList.contains("-translate-x-full");
                 if (!isCollapsed) {
                     const sidebarWidth = sidebar.offsetWidth || 384;
