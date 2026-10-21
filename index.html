@@ -23,7 +23,7 @@
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- Supabase JS SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -44,7 +44,6 @@
             z-index: 1; 
         }
 
-        /* Marker & Hexagon Styling */
         .unit-label {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 6px;
@@ -57,7 +56,6 @@
             white-space: nowrap;
         }
 
-        /* Catchy Hexagon Styling */
         .hex-catchy {
             filter: drop-shadow(0px 3px 6px rgba(0, 0, 0, 0.5));
             cursor: pointer;
@@ -104,7 +102,6 @@
             transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* RUNNING STATUS TICKER */
         #statusTicker {
             position: fixed;
             bottom: 0;
@@ -132,7 +129,6 @@
         .status-orange { background: #ea580c; }
         .status-red { background: #dc2626; }
 
-        /* STATUS TS MODAL */
         .status-online { color: #059669; font-weight: bold; }
         .status-oos { color: #64748b; font-weight: bold; }
 
@@ -140,7 +136,6 @@
             bottom: 42px !important;
         }
 
-        /* Legend Styling */
         .legend {
             background: white;
             padding: 12px;
@@ -162,11 +157,11 @@
             <img src="logo/logo-bapeten.png" alt="Logo BAPETEN" class="h-9 w-auto">
             <div>
                 <h1 class="font-bold text-sm sm:text-lg tracking-wide text-slate-900 leading-tight">Indonesia Radiation Data Monitoring System</h1>
-                <p class="text-[10px] text-slate-500 font-medium hidden sm:block">Direktorat Keteknikan dan Kesiapsiagaan Nuklir — BAPETEN</p>
+                <p id="headerSubtitle" class="text-[10px] text-slate-500 font-medium hidden sm:block">Direktorat Keteknikan dan Kesiapsiagaan Nuklir — BAPETEN</p>
             </div>
         </div>
 
-        <!-- Tombol Login Supabase -->
+        <!-- Tombol Login / Logout Supabase -->
         <button id="btn-login-admin" onclick="openLoginModal()" class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1">
             <i class="fa-solid fa-user-lock text-amber-300"></i>
             <span id="label-login-btn">Login</span>
@@ -176,7 +171,7 @@
     <!-- Main Workspace -->
     <div class="flex-1 flex relative overflow-hidden h-full w-full">
 
-        <!-- Sidebar Floating Panel (Default Tertutup: -translate-x-full) -->
+        <!-- Sidebar Floating Panel -->
         <aside id="sidePanel" class="absolute top-0 left-0 h-[calc(100%-36px)] w-80 sm:w-96 bg-white z-[1000] shadow-2xl flex flex-col border-r border-slate-200 sidebar-smooth transform -translate-x-full">
             <div class="w-full flex flex-col h-full">
                 <!-- Sidebar Header -->
@@ -184,9 +179,15 @@
                     <h2 class="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
                         <i class="fa-solid fa-chart-line text-amber-500"></i> Statistik & Monitoring
                     </h2>
-                    <button onclick="toggleSidebar()" class="text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-lg hover:bg-slate-200">
-                        <i class="fa-solid fa-chevron-left text-lg"></i>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <!-- Tombol Print Summary Report (Hanya tampil saat Login) -->
+                        <button id="reportBtn" onclick="openStatisticSummaryReport()" title="Print Summary Report" class="hidden bg-slate-900 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors">
+                            <i class="fa-solid fa-print"></i>
+                        </button>
+                        <button onclick="toggleSidebar()" class="text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-lg hover:bg-slate-200">
+                            <i class="fa-solid fa-chevron-left text-lg"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Last Update Summary Card -->
@@ -197,7 +198,7 @@
 
                 <!-- Scrollable Content -->
                 <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-                    <!-- Max & Min Dose Cards (Atas-Bawah: grid-cols-1) -->
+                    <!-- Max & Min Dose Cards -->
                     <div class="grid grid-cols-1 gap-3">
                         <div class="bg-amber-50 border border-amber-200 p-3 rounded-xl shadow-sm text-center">
                             <div class="text-[11px] font-bold text-amber-800 uppercase mb-1">Max Dose Rate</div>
@@ -212,7 +213,7 @@
                         </div>
                     </div>
 
-                    <!-- 7 Days Average Chart (Rekap Rata-Rata) -->
+                    <!-- 7 Days Average Chart -->
                     <div class="bg-white border border-slate-200 p-3.5 rounded-xl shadow-sm">
                         <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
                             <i class="fa-solid fa-chart-bar text-sky-600"></i> Rata-Rata Dosis 7 Hari (nSv/h)
@@ -252,6 +253,45 @@
     <!-- Running Status Ticker Bar -->
     <div id="statusTicker" class="status-green">
         <marquee id="tickerText" scrollamount="6"></marquee>
+    </div>
+
+    <!-- Status Donut Floating Button & Modal (Hanya tampil saat Login) -->
+    <button id="openDonutBtn" onclick="openStatusDonut()" class="hidden fixed top-20 left-4 z-[999] bg-slate-900 text-white w-10 h-10 rounded-full shadow-lg items-center justify-center hover:bg-slate-800 transition-colors" title="Status Detektor">
+        <i class="fa-solid fa-chart-pie"></i>
+    </button>
+
+    <div id="statusDonutModal" class="hidden fixed top-20 left-16 z-[99999] w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+            <div>
+                <div class="font-bold text-xs uppercase tracking-wider text-amber-400">Status Operasional</div>
+                <div id="statusDonutTimestamp" class="text-[10px] text-slate-300 mt-0.5">I-RDMS Detectors</div>
+            </div>
+            <button onclick="closeStatusDonut()" class="text-slate-400 hover:text-white text-lg font-bold px-2 py-1">✕</button>
+        </div>
+        <div class="p-4">
+            <div class="flex justify-around text-center mb-3">
+                <div>
+                    <div id="onlineCount" class="text-xl font-black text-emerald-600">0</div>
+                    <div class="text-[11px] text-slate-500 font-semibold">Online</div>
+                </div>
+                <div>
+                    <div id="offlineCount" class="text-xl font-black text-red-600">0</div>
+                    <div class="text-[11px] text-slate-500 font-semibold">Offline</div>
+                </div>
+                <div>
+                    <div id="maintenanceCount" class="text-xl font-black text-amber-500">0</div>
+                    <div class="text-[11px] text-slate-500 font-semibold">Maint.</div>
+                </div>
+            </div>
+            <div class="relative w-48 h-48 mx-auto mb-3">
+                <canvas id="statusDonutChart"></canvas>
+            </div>
+            <div class="text-center">
+                <button onclick="openStationDetails()" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm">
+                    View Details
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Modal Login Supabase -->
@@ -327,15 +367,24 @@
 
                 <!-- Right Panel: Chart & Date Filter Controls -->
                 <div class="flex-1 flex flex-col gap-4 min-w-0">
-                    <!-- Date Picker Bar -->
-                    <div id="datePickerBar" class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-end gap-3 text-xs">
+                    <!-- Date Picker & Granularity Bar -->
+                    <div id="datePickerBar" class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
                         <div class="flex items-center gap-2">
-                            <label class="font-semibold text-slate-600">Dari:</label>
-                            <input type="datetime-local" id="dateFrom" class="bg-white border border-slate-200 px-2 py-1 rounded-md text-xs">
+                            <span class="font-semibold text-slate-600">Granularity:</span>
+                            <div class="flex gap-1">
+                                <button id="btnDaily" onclick="setGranularity('daily')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold text-xs">Daily</button>
+                                <button id="btnHourly" onclick="setGranularity('hourly')" class="px-2.5 py-1 bg-slate-200 text-slate-700 rounded font-bold text-xs">Hourly</button>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <label class="font-semibold text-slate-600">Sampai:</label>
-                            <input type="datetime-local" id="dateTo" class="bg-white border border-slate-200 px-2 py-1 rounded-md text-xs">
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-1">
+                                <label class="font-semibold text-slate-600">Dari:</label>
+                                <input type="date" id="dateFrom" class="bg-white border border-slate-200 px-2 py-1 rounded-md text-xs">
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <label class="font-semibold text-slate-600">Sampai:</label>
+                                <input type="date" id="dateTo" class="bg-white border border-slate-200 px-2 py-1 rounded-md text-xs">
+                            </div>
                         </div>
                     </div>
 
@@ -357,12 +406,28 @@
 
     <!-- JavaScript Logic -->
     <script>
-        // SUPABASE CLIENT CONFIGURATION
+        // SUPABASE CONFIGURATION
         const SUPABASE_URL = 'https://kedpmwibkkzvnuhlszeu.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZHBtd2lia2t6dm51aGxzemV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Mjc2NDgsImV4cCI6MjEwNzUwMzY0OH0.AMLnYZmWaoFGcNEK6j19-3cdJgCAJYh_W4dsGhc5gRg';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // INDEX & CACHE
+        let isLoggedIn = false;
+
+        // Dynamic CSV file selection based on login state
+        function getProfileFile() {
+            return isLoggedIn ? "profile_backend.csv" : "profile.csv";
+        }
+        function getTimeseriesFile() {
+            return isLoggedIn ? "timeseries_all.csv" : "timeseries.csv";
+        }
+        function getOutputFile() {
+            return isLoggedIn ? "output_all.csv" : "output.csv";
+        }
+
+        function normalizeName(name){
+            return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
+        }
+
         window.stationIndex = {};
         window.profileIndex = {};
         window.latestTS = {};
@@ -372,10 +437,6 @@
             "cilacap":      {lat:-0.12, lon:-0.18},
             "banjarnegara": {lat: 0.12, lon: 0.18}
         };
-
-        function normalizeName(name){
-            return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
-        }
 
         function applyZoomOffset(name, lat, lon){
             if(map.getZoom() >= 8){
@@ -391,47 +452,31 @@
             };
         }
 
-        // FUNGSI LOAD PROFILE DARI SUPABASE (Menggantikan fetch profile.csv)
         function loadProfile(){
-            supabaseClient
-                .from('profiles')
-                .select('*')
-                .then(({ data, error }) => {
-                    if(error){
-                        console.error("Gagal memuat profiles dari Supabase", error);
-                        return;
-                    }
-                    window.profileIndex = {};
-                    data.forEach(r => {
-                        var key = normalizeName(r.station);
-                        window.profileIndex[key] = {
-                            "station": r.station,
-                            "Address": r.address,
-                            "Province": r.province,
-                            "Latitude": r.latitude,
-                            "Longitude": r.longitude,
-                            "IMAGE_URL": r.image_url
-                        };
-                    });
+            fetch(getProfileFile() + "?nocache=" + Date.now())
+            .then(r=>r.text())
+            .then(text=>{
+                var data = Papa.parse(text,{header:true, skipEmptyLines:true}).data;
+                window.profileIndex = {};
+                data.forEach(r=>{
+                    var key = normalizeName(r["station"] || r["NAMA UNIT"]);
+                    window.profileIndex[key] = r;
                 });
+            }).catch(e=>console.error("Error loading profile file", e));
         }
 
-        // MAP BASELAYERS (Esri Satellite sebagai Default)
-        var esriSat = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        {
-        maxZoom: 19
-        }
-        );
-        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OpenStreetMap' });
-        var googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{maxZoom:20,subdomains:['mt0','mt1','mt2','mt3'], attribution: 'Google'});
-        var googleSat = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:20,subdomains:['mt0','mt1','mt2','mt3'], attribution: 'Google'});
+        // Base layers
+        var esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
+        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+        var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+        var googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{maxZoom:20,subdomains:['mt0','mt1','mt2','mt3']});
+        var googleSat = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:20,subdomains:['mt0','mt1','mt2','mt3']});
         var esriGray = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,attribution:'Esri'});
         var esriGrayLabel = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxZoom:16});
 
         var map = L.map('map',{
             zoomControl: false,
-            layers: [esriSat], // Default Esri Satellite
+            layers: [esriSat],
             zoomSnap: 0.25,
             zoomDelta: 0.25,
             wheelPxPerZoomLevel: 120
@@ -462,18 +507,45 @@
 
         var polygonLayer = L.layerGroup().addTo(map);
         var labelLayer = L.layerGroup().addTo(map);
+        var offlineLayer = L.layerGroup().addTo(map);
+        var maintenanceLayer = L.layerGroup().addTo(map);
+        var onlineLayer = L.layerGroup().addTo(map);
+
+        function syncStationLabels(){
+            labelLayer.clearLayers();
+            if(!map.hasLayer(labelLayer)) return;
+
+            [onlineLayer, offlineLayer, maintenanceLayer].forEach(function(grp){
+                if(!map.hasLayer(grp)) return;
+                grp.eachLayer(function(l){
+                    if(l.stationLabel){
+                        labelLayer.addLayer(l.stationLabel);
+                    }
+                });
+            });
+        }
+
+        map.on('overlayadd overlayremove', function(e){
+            if(e.layer===onlineLayer || e.layer===offlineLayer || e.layer===maintenanceLayer || e.layer===labelLayer){
+                syncStationLabels();
+            }
+        });
 
         L.control.layers(
             {
                 "Esri Satellite": esriSat,
-                "ESRI Light Gray": esriGray,
                 "OpenStreetMap": osm,
+                "Dark": dark,
                 "Google Hybrid": googleHybrid,
-                "Google Satellite": googleSat
+                "Google Satellite": googleSat,
+                "ESRI Light Gray": esriGray
             },
             {
                 "ESRI Labels": esriGrayLabel,
                 "Station Polygons": polygonLayer,
+                "Online": onlineLayer,
+                "Offline": offlineLayer,
+                "Maintenance": maintenanceLayer,
                 "Station Labels": labelLayer
             },
             { position: 'topright' }
@@ -485,7 +557,6 @@
             return Math.max(base/Math.pow(2,zoom-5),80);
         }
 
-        // Hexagon dibuat lebih catchy dengan garis tepi tegas & efek bayangan
         function createHex(lat,lon,radius,color,options={}){
             var coords = [];
             for(var i=0;i<6;i++){
@@ -520,9 +591,11 @@
         function aggregateData(data, gridSize){
             var grid = {};
             data.forEach(row=>{
-                var lat = parseFloat(row["LATITUDE"]);
-                var lon = parseFloat(row["LONGITUDE"]);
-                var dose = row["Gamma Dose Rate (nSv/h)"];
+                var lat = parseFloat(row["LATITUDE"] || row["lat"]);
+                var lon = parseFloat(row["LONGITUDE"] || row["lon"]);
+                var name = row["NAMA UNIT"] || row["station"] || "";
+                var dose = row["<div style='font-size:11px'>Gamma Dose Rate (nSv/h)</div>"] || row["Gamma Dose Rate (nSv/h)"] || row["dose"];
+
                 if(isNaN(lat)||isNaN(lon)) return;
 
                 var gx = Math.floor(lat/gridSize);
@@ -530,7 +603,7 @@
                 var key = gx+"_"+gy;
 
                 if(!grid[key]){
-                    grid[key]={ latSum:0, lonSum:0, doseSum:0, count:0, stations:[] };
+                    grid[key] = { latSum:0, lonSum:0, doseSum:0, count:0, stations:[] };
                 }
 
                 grid[key].latSum += lat;
@@ -541,9 +614,9 @@
                 if(!isNaN(doseNum)){ grid[key].doseSum += doseNum; }
 
                 grid[key].stations.push({
-                    name: row["NAMA UNIT"],
+                    name: name,
                     dose: dose,
-                    time: row["LAST UPDATE (WIB)"]
+                    time: row["LAST UPDATE (WIB)"] || row["time"]
                 });
             });
 
@@ -556,7 +629,15 @@
                     var ts = window.latestTS[key];
                     if(ts){ sum += ts.dose; count++; }
                 });
-                var avgDose = count > 0 ? sum / count : null;
+                var avgDose = count > 0 ? sum / count : (g.count > 0 ? g.doseSum / g.count : null);
+
+                g.stations.sort((a,b)=>{
+                    const statA = (window.profileIndex[normalizeName(a.name)]?.Status || "").toLowerCase();
+                    const statB = (window.profileIndex[normalizeName(b.name)]?.Status || "").toLowerCase();
+                    const order = { offline: 0, maintenance: 1, online: 2 };
+                    return (order[statB] || 0) - (order[statA] || 0);
+                });
+
                 result.push({
                     lat: g.latSum/g.count,
                     lon: g.lonSum/g.count,
@@ -568,170 +649,245 @@
             return result;
         }
 
-        // FUNGSI LOAD TIMESERIES DARI SUPABASE (Menggantikan fetch timeseries.csv)
+        window.latestTS = {};
+
         function loadLatestTimeseries(callback){
-            supabaseClient
-                .from('timeseries')
-                .select('*')
-                .then(({ data, error }) => {
-                    if(error){
-                        console.error("Gagal memuat timeseries dari Supabase", error);
-                        return;
+            fetch(getTimeseriesFile() + "?nocache=" + Date.now())
+            .then(r=>r.text())
+            .then(text=>{
+                var data = Papa.parse(text,{header:true}).data;
+                var latest = {};
+                data.forEach(r=>{
+                    var key = normalizeName(r.station);
+                    var t = new Date(r.time);
+                    var v = parseFloat(r.dose);
+                    if(isNaN(v)) return;
+                    if(!latest[key] || t > latest[key].time){
+                        latest[key] = {
+                            dose: v,
+                            time: t,
+                            timeStr: r.time,
+                            name: r.station   
+                        };
                     }
-                    var latest = {};
-                    data.forEach(r=>{
-                        var key = normalizeName(r.station);
-                        var t = new Date(r.time);
-                        var v = parseFloat(r.dose);
-                        if(isNaN(v)) return;
-                        if(!latest[key] || t > latest[key].time){
-                            latest[key] = {
-                                dose: v,
-                                time: t,
-                                timeStr: r.time,
-                                name: r.station   
-                            };
-                        }
-                    });
-                    window.latestTS = latest;
-                    if(callback) callback();
                 });
+                window.latestTS = latest;
+                if(callback) callback();
+            }).catch(e=>console.error("Error loading timeseries file", e));
         }
 
-        // FUNGSI LOAD CSV/STATIONS DARI SUPABASE (Menggantikan fetch output.csv)
         function loadCSV(){
             loadLatestTimeseries(()=>{
-                supabaseClient
-                    .from('stations')
-                    .select('*')
-                    .then(({ data: rawData, error }) => {
-                        if(error){
-                            console.error("Gagal memuat stations dari Supabase", error);
-                            return;
-                        }
+                fetch(getOutputFile() + "?nocache=" + Date.now())
+                .then(r=>r.text())
+                .then(text=>{
+                    polygonLayer.clearLayers();
+                    labelLayer.clearLayers();
+                    onlineLayer.clearLayers();
+                    offlineLayer.clearLayers();
+                    maintenanceLayer.clearLayers();
 
-                        polygonLayer.clearLayers();
-                        labelLayer.clearLayers();
+                    var radius = getRadius();
+                    var rawData = Papa.parse(text,{header:true, skipEmptyLines:true}).data;
+                    window.stationIndex = {};
 
-                        var radius = getRadius();
-                        window.stationIndex = {};
-
-                        rawData.forEach(r=>{
-                            var key = normalizeName(r["NAMA UNIT"]);
-                            window.stationIndex[key] = {
-                                "NAMA UNIT": r["NAMA UNIT"],
-                                "LATITUDE": r["LATITUDE"],
-                                "LONGITUDE": r["LONGITUDE"],
-                                "Gamma Dose Rate (nSv/h)": r["Gamma Dose Rate (nSv/h)"],
-                                "LAST UPDATE (WIB)": r["LAST UPDATE (WIB)"]
-                            };
-                        });
-                        
-                        var zoom = map.getZoom();
-                        var data;
-                        var rawArray = Object.values(window.stationIndex);
-
-                        if(zoom<6){
-                            data = aggregateData(rawArray,1);
-                        }else if(zoom<8){
-                            data = aggregateData(rawArray,0.5);
-                        }else{
-                            data = rawArray;
-                        }
-
-                        data.forEach(row=>{
-                            var lat = row.lat || parseFloat(row["LATITUDE"]);
-                            var lon = row.lon || parseFloat(row["LONGITUDE"]);
-                            var stationName = row["NAMA UNIT"] || (row.stations ? row.stations[0].name : "");
-                            var pos = applyZoomOffset(stationName, lat, lon);
-
-                            lat = pos.lat;
-                            lon = pos.lon;
-                            var key = normalizeName(stationName);
-                            var ts = window.latestTS[key];
-                            var dose = ts ? ts.dose : null;
-
-                            if(isNaN(lat)||isNaN(lon)) return;
-
-                            var color;
-                            if(row.stations){
-                                var hasOOS = row.stations.some(s=>s.dose==="Out of service");
-                                color = hasOOS ? "#2b83ba" : getColor(dose);
-                            }else{
-                                color = getColor(dose);
-                            }
-
-                            var hex;
-                            if(row.stations){
-                                var valid = row.stations.some(s=>{
-                                    return window.latestTS[normalizeName(s.name)];
-                                });
-                                hex = createHex(lat,lon,radius, valid ? color : "#8fb9e3",{
-                                    opacity: valid ? 0.9 : 0.65,
-                                    stroke: valid ? "#ffffff" : "#cbd5e1",
-                                    weight: 2
-                                });
-                            }else{
-                                if(dose==="Out of service"){
-                                    hex = createHex(lat,lon,radius,"#8fb9e3",{ opacity:0.65, stroke:"#cbd5e1", weight:2 });
-                                }else{
-                                    hex = createHex(lat,lon,radius,color,{ opacity:0.9, stroke:"#ffffff", weight:2 });
-                                }
-                            }
-
-                            var popupContent = "";
-                            if(row.count){
-                                var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'>";
-                                row.stations.forEach(s=>{
-                                    var k = normalizeName(s.name);
-                                    var tss = window.latestTS[k];
-                                    var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
-                                    var timeText = tss ? tss.timeStr : "-";
-
-                                    listHTML +=
-                                    "<div style='border-bottom:1px solid #e2e8f0;padding:6px 0'>"+
-                                    "<b>"+s.name+"</b><br>"+
-                                    "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
-                                    "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br>"+
-                                    "<a href='#' onclick=\"openTS('"+s.name+"')\" style='color:#059669;font-weight:bold;'>View Time Series</a>"+
-                                    "</div>";
-                                });
-                                listHTML += "</div>";
-                                popupContent = listHTML;
-                            }else{
-                                var doseText = ts ? ts.dose.toFixed(2)+" nSv/h" : "No data";
-                                var timeText = ts ? ts.timeStr : "-";
-                                popupContent =
-                                "<div style='padding:10px;'>"+
-                                "<h4 style='font-weight:bold;color:#0f172a;margin-bottom:4px;'>"+stationName+"</h4>"+
-                                "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
-                                "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br><br>"+
-                                "<a href='#' onclick=\"openTS('"+stationName+"')\" style='background:#0284c7;color:white;padding:4px 8px;border-radius:4px;text-decoration:none;font-size:11px;display:inline-block;'>View Time Series</a>"+
-                                "</div>";
-                            }
-
-                            hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
-                            hex.on('click', function(){ this.openPopup(); });
-                            hex.addTo(polygonLayer);
-
-                            if(!row.count || map.getZoom() >= 5){
-                                var labelOffsetLat = lat + (radius/111111)*0.9;
-                                var labelOffsetLon = lon + (radius/(111111*Math.cos(lat*Math.PI/180)))*0.9;
-                                var labelName = row["NAMA UNIT"] || (row.stations && row.stations.length > 0 ? row.stations[0].name : "-");
-
-                                var label = L.marker([labelOffsetLat,labelOffsetLon],{
-                                    icon: L.divIcon({
-                                        className:'',
-                                        html:'<div class="unit-label">'+labelName+'</div>',
-                                        iconSize:null
-                                    })
-                                });
-                                label.addTo(labelLayer);
-                            }
-                        });
-
-                        renderSidebarStationList();
+                    rawData.forEach(r=>{
+                        var key = normalizeName(r["NAMA UNIT"] || r["station"]);
+                        window.stationIndex[key] = r;
                     });
+                    
+                    var zoom = map.getZoom();
+                    var data;
+
+                    if(zoom < 8){
+                        var gridSize = zoom < 6 ? 1.5 : 0.75;
+                        data = aggregateData(rawData, gridSize);
+                        data.sort((a,b)=>{
+                            const getOrder = (r) => {
+                                if(!r.stations) return 0;
+                                let hasOnline = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="online");
+                                let hasMaint = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="maintenance");
+                                let hasOff = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="offline");
+                                if(hasOnline) return 2;
+                                if(hasMaint) return 1;
+                                return 0;
+                            };
+                            return getOrder(a) - getOrder(b);
+                        });
+                    } else {
+                        data = rawData;
+                        data.sort((a,b)=>{
+                            const sa = (window.profileIndex[normalizeName(a["NAMA UNIT"] || a["station"])]?.Status||"").toLowerCase();
+                            const sb = (window.profileIndex[normalizeName(b["NAMA UNIT"] || b["station"])]?.Status||"").toLowerCase();
+                            const order = {offline:0, maintenance:1, online:2};
+                            return (order[sa]||0)-(order[sb]||0);
+                        });
+                    }
+
+                    data.forEach(row=>{
+                        var stationName = row["NAMA UNIT"] || row["station"] || (row.stations ? row.stations[0].name : "");
+                        var lat = row.lat;
+                        var lon = row.lon;
+
+                        if(!row.stations){
+                            lat = parseFloat(row["LATITUDE"] || row["Latitude"]);
+                            lon = parseFloat(row["LONGITUDE"] || row["Longitude"]);
+                        }
+
+                        var pos = applyZoomOffset(stationName, lat, lon);
+                        lat = pos.lat;
+                        lon = pos.lon;
+
+                        var key = normalizeName(stationName);
+                        var ts = window.latestTS[key];
+                        var dose = row.dose !== undefined ? row.dose : (ts ? ts.dose : null);
+
+                        if(isNaN(lat)||isNaN(lon)) return;
+
+                        var color;
+                        if(row.stations){
+                            var hasOOS = row.stations.some(s=>s.dose==="Out of service");
+                            color = hasOOS ? "#2b83ba" : getColor(dose);
+                        }else{
+                            color = getColor(dose);
+                        }
+
+                        var hex;
+                        let opacity = 0.85;
+                        let stroke = "#ffffff";
+                        let hasMaintenance = false;
+                        let hasOffline = false;
+
+                        if(row.stations){
+                            let hasOnline = false;
+                            row.stations.forEach(s=>{
+                                const profile = window.profileIndex[normalizeName(s.name)];
+                                if(!profile) return;
+                                const status = (profile.Status||"").toLowerCase();
+                                if(status==="online") hasOnline=true;
+                                if(status==="maintenance") hasMaintenance=true;
+                                if(status==="offline") hasOffline=true;
+                            });
+                            if(hasOnline){
+                                hasOffline = false;
+                                hasMaintenance = false;
+                            }
+                        }else{
+                            const profile = window.profileIndex[normalizeName(stationName)];
+                            const status = (profile?.Status||"").toLowerCase();
+                            if(status==="maintenance") hasMaintenance=true;
+                            if(status==="offline") hasOffline=true;
+                        }
+
+                        const profileCurrent = window.profileIndex[normalizeName(stationName)];
+                        const statusCurrent = (profileCurrent?.Status||"").toLowerCase();
+                        const isTopOnline = (map.getZoom()>=8 && statusCurrent==="online");
+
+                        if(hasMaintenance){
+                            opacity = isTopOnline ? 0.85 : 0.45;
+                            stroke = "#ff9800";
+                        }
+                        if(hasOffline){
+                            opacity = isTopOnline ? 0.85 : 0.30;
+                            stroke = "#d32f2f";
+                        }
+                        if(isTopOnline){
+                            opacity = 0.85;
+                        }
+
+                        hex = createHex(lat,lon,radius,color,{
+                            opacity: opacity,
+                            stroke: stroke,
+                            weight: 2
+                        });
+
+                        var popupContent = "";
+                        if(row.count){
+                            var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'><b>Aggregated Stations ("+row.count+")</b><br><br>";
+                            row.stations.forEach(s=>{
+                                var k = normalizeName(s.name);
+                                var tss = window.latestTS[k];
+                                var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
+                                var timeText = tss ? tss.timeStr : "-";
+
+                                listHTML +=
+                                "<div style='border-bottom:1px solid #e2e8f0;padding:6px 0'>"+
+                                "<b>"+s.name+"</b><br>"+
+                                "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
+                                "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br>"+
+                                "<a href='#' onclick=\"openTS('"+s.name+"')\" style='color:#059669;font-weight:bold;'>View Time Series</a>"+
+                                "</div>";
+                            });
+                            listHTML += "</div>";
+                            popupContent = listHTML;
+                        }else{
+                            var doseText = ts ? ts.dose.toFixed(2)+" nSv/h" : "No data";
+                            var timeText = ts ? ts.timeStr : "-";
+                            popupContent =
+                            "<div style='padding:10px;'>"+
+                            "<h4 style='font-weight:bold;color:#0f172a;margin-bottom:4px;'>"+stationName+"</h4>"+
+                            "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
+                            "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br><br>"+
+                            "<a href='#' onclick=\"openTS('"+stationName+"')\" style='background:#0284c7;color:white;padding:4px 8px;border-radius:4px;text-decoration:none;font-size:11px;display:inline-block;'>View Time Series</a>"+
+                            "</div>";
+                        }
+
+                        hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
+                        hex.on('click', function(){ this.openPopup(); });
+
+                        let targetLayer = onlineLayer;
+                        let statusTop = "online";
+
+                        if(row.stations){
+                            let hasOnline=false, hasMaintenance2=false, hasOffline2=false;
+                            row.stations.forEach(s=>{
+                                const st = (window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase();
+                                if(st==="online") hasOnline=true;
+                                else if(st==="maintenance") hasMaintenance2=true;
+                                else if(st==="offline") hasOffline2=true;
+                            });
+                            if(hasOnline){
+                                statusTop="online";
+                                targetLayer=onlineLayer;
+                            }else if(hasMaintenance2){
+                                statusTop="maintenance";
+                                targetLayer=maintenanceLayer;
+                            }else{
+                                statusTop="offline";
+                                targetLayer=offlineLayer;
+                            }
+                        }else{
+                            const profileTop = window.profileIndex[normalizeName(stationName)];
+                            statusTop = (profileTop?.Status || "").toLowerCase();
+                            if(statusTop==="offline"){
+                                targetLayer=offlineLayer;
+                            }else if(statusTop==="maintenance"){
+                                targetLayer=maintenanceLayer;
+                            }
+                        }
+
+                        hex.addTo(targetLayer);
+                        if(statusTop==="online"){ hex.bringToFront(); }
+
+                        if(!row.count || map.getZoom() >= 5){
+                            var labelOffsetLat = lat + (radius/111111)*0.9;
+                            var labelOffsetLon = lon + (radius/(111111*Math.cos(lat*Math.PI/180)))*0.9;
+                            var labelName = row["NAMA UNIT"] || row["station"] || (row.stations && row.stations.length > 0 ? (row.stations.length > 1 ? row.stations[0].name + " (" + row.stations.length + ")" : row.stations[0].name) : "-");
+
+                            var label = L.marker([labelOffsetLat,labelOffsetLon],{
+                                icon: L.divIcon({
+                                    className:'',
+                                    html:'<div class="unit-label">'+labelName+'</div>',
+                                    iconSize:null
+                                })
+                            });
+                            hex.stationLabel = label;
+                        }
+                    });
+
+                    syncStationLabels();
+                    renderSidebarStationList();
+                });
             });
         }
 
@@ -747,12 +903,18 @@
 
             keys.forEach(k=>{
                 const st = window.stationIndex[k];
-                const name = st["NAMA UNIT"] || k;
+                const name = st["NAMA UNIT"] || st["station"] || k;
                 if(searchVal && !name.toLowerCase().includes(searchVal)) return;
 
                 const ts = window.latestTS[k];
                 const dose = ts ? ts.dose.toFixed(2) + " nSv/h" : "No data";
-                const isOnline = ts ? true : false;
+                const profile = window.profileIndex[k];
+                const status = (profile?.Status || "online").toLowerCase();
+
+                let badgeClass = "bg-emerald-100 text-emerald-800";
+                let badgeText = "Online";
+                if(status === "offline"){ badgeClass = "bg-red-100 text-red-800"; badgeText = "Offline"; }
+                else if(status === "maintenance"){ badgeClass = "bg-amber-100 text-amber-800"; badgeText = "Maint."; }
 
                 count++;
                 html += `
@@ -761,8 +923,8 @@
                             <div class="font-bold text-slate-800">${name}</div>
                             <div class="text-[11px] text-slate-500">${dose}</div>
                         </div>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}">
-                            ${isOnline ? 'Online' : 'OOS'}
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${badgeClass}">
+                            ${badgeText}
                         </span>
                     </div>
                 `;
@@ -780,8 +942,8 @@
             const k = normalizeName(name);
             const st = window.stationIndex[k];
             if(st){
-                const lat = parseFloat(st["LATITUDE"]);
-                const lon = parseFloat(st["LONGITUDE"]);
+                const lat = parseFloat(st["LATITUDE"] || st["Latitude"] || st["lat"]);
+                const lon = parseFloat(st["LONGITUDE"] || st["Longitude"] || st["lon"]);
                 if(!isNaN(lat) && !isNaN(lon)){
                     map.flyTo([lat, lon], 10, { duration: 1.2 });
                 }
@@ -826,98 +988,98 @@
         }
 
         function drawAvgChart(){
-            supabaseClient
-                .from('timeseries')
-                .select('*')
-                .then(({ data, error }) => {
-                    if(error){
-                        console.error("Gagal memuat timeseries untuk chart dari Supabase", error);
-                        return;
-                    }
-                    const now = new Date();
-                    const sevenDaysAgo = new Date();
-                    sevenDaysAgo.setDate(now.getDate() - 7);
+            fetch(getTimeseriesFile() + "?nocache=" + Date.now())
+            .then(r=>r.text())
+            .then(text=>{
+                var data = Papa.parse(text,{header:true}).data;
+                const now = new Date();
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(now.getDate() - 7);
 
-                    var grouped = {};
-                    const activeStations = new Set(Object.keys(window.stationIndex));
+                var grouped = {};
+                const activeStations = new Set(Object.keys(window.stationIndex));
 
-                    data.forEach(r=>{
-                        var t = new Date(r.time);
-                        var v = parseFloat(r.dose);
-                        if(t >= sevenDaysAgo && t <= now && !isNaN(v)){
-                            var key = normalizeName(r.station);
-                            if(!activeStations.has(key)) return;
-                            if(!grouped[r.station]) grouped[r.station] = [];
-                            grouped[r.station].push(v);
-                        }
-                    });
-
-                    var result = [];
-                    Object.keys(grouped).forEach(station=>{
-                        var arr = grouped[station];
-                        var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
-                        result.push({name:station, avg:avg});
-                    });
-
-                    let screenWidth = window.innerWidth;
-                    let topN = screenWidth > 1366 ? 10 : 5;
-
-                    result.sort((a,b)=>b.avg - a.avg);
-                    var top = result.slice(0, topN);
-
-                    var labels = top.map(r=>r.name);
-                    var values = top.map(r=>r.avg);
-
-                    var currentData = JSON.stringify({ values: values, topN: topN });
-                    if(window.lastChartData === currentData) return;
-                    window.lastChartData = currentData;
-
-                    if(!window.avgChart){
-                        window.avgChart = new Chart(document.getElementById("avgBarChart"),{
-                            type:'bar',
-                            data:{
-                                labels:labels,
-                                datasets:[{
-                                    data:values,
-                                    backgroundColor:'#0284c7',
-                                    borderRadius:4,
-                                    barThickness: topN === 10 ? 8 : 12
-                                }]
-                            },
-                            options:{
-                                indexAxis:'y',
-                                responsive:true,
-                                maintainAspectRatio:false,
-                                animation:false,
-                                plugins:{
-                                    legend:{display:false},
-                                    tooltip:{
-                                        callbacks:{
-                                            label:function(ctx){ return ctx.raw.toFixed(2) + " nSv/h"; }
-                                        }
-                                    }
-                                },
-                                scales:{
-                                    x:{ beginAtZero:true, max:75, title:{display:true, text:"nSv/h"} },
-                                    y:{ ticks:{ font:{size:10}, autoSkip:false }, grid:{display:false} }
-                                }
-                            }
-                        });
-                    }else{
-                        window.avgChart.data.labels = labels;
-                        window.avgChart.data.datasets[0].data = values;
-                        window.avgChart.update('none');
+                data.forEach(r=>{
+                    var t = new Date(r.time);
+                    var v = parseFloat(r.dose);
+                    if(t >= sevenDaysAgo && t <= now && !isNaN(v)){
+                        var key = normalizeName(r.station);
+                        if(!activeStations.has(key)) return;
+                        if(!grouped[r.station]) grouped[r.station] = [];
+                        grouped[r.station].push(v);
                     }
                 });
+
+                var result = [];
+                Object.keys(grouped).forEach(station=>{
+                    var arr = grouped[station];
+                    var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
+                    result.push({name:station, avg:avg});
+                });
+
+                let screenWidth = window.innerWidth;
+                let topN = screenWidth > 1366 ? 10 : 5;
+
+                result.sort((a,b)=>b.avg - a.avg);
+                var top = result.slice(0, topN);
+
+                var labels = top.map(r=>r.name);
+                var values = top.map(r=>r.avg);
+
+                var currentData = JSON.stringify({ values: values, topN: topN });
+                if(window.lastChartData === currentData) return;
+                window.lastChartData = currentData;
+
+                if(!window.avgChart){
+                    window.avgChart = new Chart(document.getElementById("avgBarChart"),{
+                        type:'bar',
+                        data:{
+                            labels:labels,
+                            datasets:[{
+                                data:values,
+                                backgroundColor:'#0284c7',
+                                borderRadius:4,
+                                barThickness: topN === 10 ? 8 : 12
+                            }]
+                        },
+                        options:{
+                            indexAxis:'y',
+                            responsive:true,
+                            maintainAspectRatio:false,
+                            animation:false,
+                            plugins:{
+                                legend:{display:false},
+                                tooltip:{
+                                    callbacks:{
+                                        label:function(ctx){ return ctx.raw.toFixed(2) + " nSv/h"; }
+                                    }
+                                }
+                            },
+                            scales:{
+                                x:{ beginAtZero:true, max:75, title:{display:true, text:"nSv/h"} },
+                                y:{ ticks:{ font:{size:10}, autoSkip:false }, grid:{display:false} }
+                            }
+                        }
+                    });
+                }else{
+                    window.avgChart.data.labels = labels;
+                    window.avgChart.data.datasets[0].data = values;
+                    window.avgChart.update('none');
+                }
+            });
         }
 
-        // TIME SERIES (TREND)
+        // Time Series Modal & Advanced Functions
         var tsChart = null;
         var allLabels = [], allValues = [], filteredLabels = [], filteredValues = [];
         var isFiltered = false;
+        var currentStationRawData = [];
+        var currentGranularity = 'daily';
+        var dailyLabels = [], dailyValues = [], hourlyLabels = [], hourlyValues = [];
 
         function openTS(station){
             isFiltered = false;
+            currentGranularity = 'daily';
             var key = normalizeName(station);
             var stationData = window.stationIndex[key];
             var profileData = window.profileIndex[key];
@@ -932,7 +1094,7 @@
             document.getElementById("tsStats").innerHTML = "";
 
             var img = document.getElementById("tsImage");
-            var url = profileData?.["image_url"] || profileData?.["IMAGE_URL"];
+            var url = profileData?.["IMAGE_URL"];
             if(url){
                 img.src = url.trim();
                 img.onerror = function(){ this.src = "https://via.placeholder.com/250x150?text=Gambar+Tidak+Tersedia"; };
@@ -940,73 +1102,174 @@
                 img.src = "https://via.placeholder.com/250x150?text=Gambar+Tidak+Tersedia";
             }
 
-            var statusText = stationData?.["Gamma Dose Rate (nSv/h)"] === "Out of service"
-                ? "<span class='status-oos'>Out of Service</span>"
-                : "<span class='status-online'>Online</span>";
+            let status = (profileData?.Status || "").toLowerCase();
+            let statusText;
+            if(status==="online"){
+                statusText="<span class='status-online'>Online</span>";
+            }else if(status==="maintenance"){
+                statusText="<span style='color:#ff9800;font-weight:bold'>Maintenance</span>";
+            }else if(status==="offline"){
+                statusText="<span class='status-oos'>Offline</span>";
+            }else{
+                statusText="<span style='color:#777'>Unknown</span>";
+            }
+
+            const startDate = profileData?.["Operation Start Date"] || "-";
+            const lastMaintenance = profileData?.["Last Maintenance Date"] || "-";
+            const lastOperation = profileData?.["Last Operation"] || "-";
+
+            let runningDay = "-";
+            function parseCustomDate(s){
+                if(!s || s==="-" ) return null;
+                const m={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+                const p=s.trim().split("-");
+                if(p.length===3){
+                    let y=parseInt(p[2],10);
+                    y += (y<70)?2000:1900;
+                    return new Date(y,m[p[1]],parseInt(p[0],10));
+                }
+                const d=new Date(s);
+                return isNaN(d.getTime())?null:d;
+            }
+
+            const start=parseCustomDate(startDate);
+            let end=(status==="online")?new Date():parseCustomDate(lastOperation);
+            if(start && end){
+                runningDay=Math.floor((end-start)/86400000);
+            }
 
             document.getElementById("tsMeta").innerHTML =
                 "<div class='font-bold text-slate-900 text-sm mb-1'>"+station+"</div>"+
-                "<b>Alamat:</b> "+(profileData?.["address"] || profileData?.["Address"] || "-")+"<br>"+
-                "<b>Provinsi:</b> "+(profileData?.["province"] || profileData?.["Province"] || "-")+"<br>"+
-                "<b>Latitude:</b> "+(profileData?.["latitude"] || profileData?.["Latitude"] || "-")+"<br>"+
-                "<b>Longitude:</b> "+(profileData?.["longitude"] || profileData?.["Longitude"] || "-")+"<br>"+
-                "<b>Status:</b> "+statusText;
+                "<b>Alamat:</b> "+(profileData?.Address || "-")+"<br>"+
+                "<b>Provinsi:</b> "+(profileData?.Province || "-")+"<br>"+
+                "<b>Latitude:</b> "+(profileData?.Latitude || "-")+"<br>"+
+                "<b>Longitude:</b> "+(profileData?.Longitude || "-")+"<br>"+
+                "<b>Status:</b> "+statusText+"<br>"+
+                "<b>Running Time:</b> "+runningDay+" days";
 
-            supabaseClient
-                .from('timeseries')
-                .select('*')
-                .then(({ data, error }) => {
-                    if(error){
-                        console.error("Gagal memuat detail timeseries dari Supabase", error);
-                        return;
-                    }
-                    const now = new Date();
-                    const oneMonthAgo = new Date();
-                    oneMonthAgo.setMonth(now.getMonth() - 1);
+            fetch(getTimeseriesFile() + "?nocache=" + Date.now())
+            .then(r=>r.text())
+            .then(text=>{
+                var data = Papa.parse(text,{header:true, skipEmptyLines:true}).data;
+                const now = new Date();
+                const oneMonthAgo = new Date();
+                oneMonthAgo.setMonth(now.getMonth() - 1);
 
-                    var dailyGroup = {};
-                    data.forEach(r=>{
-                        if(normalizeName(r.station) === normalizeName(station)){
-                            var t = new Date(r.time);
-                            var v = parseFloat(r.dose);
-                            if(t >= oneMonthAgo && t <= now && !isNaN(v)){
-                                var dayKey = t.toISOString().split("T")[0];
-                                if(!dailyGroup[dayKey]) dailyGroup[dayKey] = [];
-                                dailyGroup[dayKey].push(v);
-                            }
-                        }
-                    });
-
-                    allLabels = []; allValues = [];
-                    Object.keys(dailyGroup).sort().forEach(day=>{
-                        var arr = dailyGroup[day];
-                        var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
-                        allLabels.push(day);
-                        allValues.push(avg);
-                    });
-
-                    if(allValues.length===0){
-                        document.getElementById("tsStats").innerHTML = "No data available";
-                        return;
-                    }
-
-                    var fromInput = document.getElementById("dateFrom");
-                    var toInput = document.getElementById("dateTo");
-                    if(allLabels.length > 0){
-                        fromInput.value = allLabels[0].replace(" ", "T");
-                        toInput.value = allLabels[allLabels.length-1].replace(" ", "T");
-                    }
-
-                    fromInput.onchange = applyDateFilter;
-                    toInput.onchange = applyDateFilter;
-
-                    var slider = document.getElementById("timeSlider");
-                    var lastIndex = allValues.length - 1;
-                    slider.min = 0; slider.max = lastIndex; slider.step = 1; slider.value = lastIndex;
-
-                    updateChartUnified(lastIndex);
-                    slider.oninput = function(){ updateChartUnified(parseInt(this.value)); };
+                currentStationRawData = data.filter(r=>{
+                    if(normalizeName(r.station) !== normalizeName(station)) return false;
+                    var t = new Date(r.time);
+                    var v = parseFloat(r.dose);
+                    return t >= oneMonthAgo && t <= now && !isNaN(v);
                 });
+
+                processTimeSeriesData();
+            });
+        }
+
+        function processTimeSeriesData(){
+            dailyLabels = []; dailyValues = [];
+            hourlyLabels = []; hourlyValues = [];
+            var dailyGroup = {};
+
+            currentStationRawData.forEach(r=>{
+                var t = new Date(r.time);
+                var v = parseFloat(r.dose);
+
+                hourlyLabels.push(r.time);
+                hourlyValues.push(v);
+
+                var dayKey = t.toISOString().split("T")[0];
+                if(!dailyGroup[dayKey]) dailyGroup[dayKey] = [];
+                dailyGroup[dayKey].push(v);
+            });
+
+            Object.keys(dailyGroup).sort().forEach(day=>{
+                var arr = dailyGroup[day];
+                var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
+                dailyLabels.push(day);
+                dailyValues.push(avg);
+            });
+
+            if(currentGranularity === 'daily'){
+                allLabels = dailyLabels;
+                allValues = dailyValues;
+            } else {
+                allLabels = hourlyLabels;
+                allValues = hourlyValues;
+            }
+
+            if(allValues.length===0){
+                document.getElementById("tsStats").innerHTML="No data available";
+                if(tsChart){ tsChart.destroy(); tsChart = null; }
+                return;
+            }
+
+            var fromInput = document.getElementById("dateFrom");
+            var toInput = document.getElementById("dateTo");
+
+            if(allLabels.length > 0){
+                fromInput.value = allLabels[0].split(" ")[0];
+                toInput.value = allLabels[allLabels.length-1].split(" ")[0];
+            }
+
+            fromInput.onchange = applyDateFilter;
+            toInput.onchange = applyDateFilter;
+
+            var slider = document.getElementById("timeSlider");
+            var lastIndex = allValues.length - 1;
+
+            slider.min = 0;
+            slider.max = lastIndex;
+            slider.step = 1;
+            slider.value = lastIndex;
+
+            isFiltered = false;
+            updateChartUnified(lastIndex);
+            updateGranularityButtons();
+        }
+
+        function setGranularity(gran){
+            currentGranularity = gran;
+            isFiltered = false;
+
+            if(currentGranularity === 'daily'){
+                allLabels = dailyLabels;
+                allValues = dailyValues;
+            } else {
+                allLabels = hourlyLabels;
+                allValues = hourlyValues;
+            }
+
+            if(allValues.length === 0) return;
+
+            var slider = document.getElementById("timeSlider");
+            var lastIndex = allValues.length - 1;
+
+            slider.min = 0;
+            slider.max = lastIndex;
+            slider.value = lastIndex;
+
+            if(allLabels.length > 0){
+                document.getElementById("dateFrom").value = allLabels[0].split(" ")[0];
+                document.getElementById("dateTo").value = allLabels[allLabels.length-1].split(" ")[0];
+            }
+
+            updateChartUnified(lastIndex);
+            updateGranularityButtons();
+        }
+
+        function updateGranularityButtons(){
+            var btnDaily = document.getElementById("btnDaily");
+            var btnHourly = document.getElementById("btnHourly");
+            if(!btnDaily || !btnHourly) return;
+
+            if(currentGranularity === 'daily'){
+                btnDaily.className = "px-2.5 py-1 bg-sky-600 text-white rounded font-bold text-xs";
+                btnHourly.className = "px-2.5 py-1 bg-slate-200 text-slate-700 rounded font-bold text-xs";
+            } else {
+                btnHourly.className = "px-2.5 py-1 bg-sky-600 text-white rounded font-bold text-xs";
+                btnDaily.className = "px-2.5 py-1 bg-slate-200 text-slate-700 rounded font-bold text-xs";
+            }
         }
 
         function applyDateFilter(){
@@ -1016,13 +1279,19 @@
 
             var fromDate = new Date(fromVal);
             var toDate = new Date(toVal);
+            toDate.setHours(23, 59, 59, 999);
 
-            filteredLabels = []; filteredValues = [];
-            for(let i=0; i<allLabels.length; i++){
-                let t = new Date(allLabels[i]);
+            let sourceLabels = (currentGranularity === 'daily') ? dailyLabels : hourlyLabels;
+            let sourceValues = (currentGranularity === 'daily') ? dailyValues : hourlyValues;
+
+            filteredLabels = [];
+            filteredValues = [];
+
+            for(let i=0; i<sourceLabels.length; i++){
+                let t = new Date(sourceLabels[i]);
                 if(t >= fromDate && t <= toDate){
-                    filteredLabels.push(allLabels[i]);
-                    filteredValues.push(allValues[i]);
+                    filteredLabels.push(sourceLabels[i]);
+                    filteredValues.push(sourceValues[i]);
                 }
             }
 
@@ -1034,13 +1303,22 @@
             slider.max = filteredValues.length - 1;
             slider.value = filteredValues.length - 1;
 
-            slider.oninput = function(){ updateChartUnified(parseInt(this.value)); };
+            slider.oninput = function(){
+                updateChartUnified(parseInt(this.value));
+            };
+
             updateChartUnified(slider.value);
         }
 
         function updateChartUnified(index){
-            var labels = isFiltered ? filteredLabels : allLabels;
-            var values = isFiltered ? filteredValues : allValues;
+            var labels, values;
+            if(isFiltered){
+                labels = filteredLabels;
+                values = filteredValues;
+            }else{
+                labels = allLabels;
+                values = allValues;
+            }
 
             if(labels.length === 0) return;
 
@@ -1060,17 +1338,19 @@
 
             var range = max - min;
             var minRange = 50;
-            var ymin, ymax;
+            let ymin, ymax;
 
             if(range < minRange){
                 var mid = (max + min) / 2;
-                ymin = mid - minRange; ymax = mid + minRange;
+                ymin = mid - minRange;
+                ymax = mid + minRange;
             }else{
-                var padding = range * 0.5;
-                ymin = min - padding; ymax = max + padding;
+                var padding = range * 1.0; 
+                ymin = min - padding;
+                ymax = max + padding;
             }
-            if(ymin < 0) ymin = 0;
 
+            if(ymin < 0) ymin = 0;
             if(tsChart) tsChart.destroy();
 
             tsChart = new Chart(document.getElementById("tsChart"),{
@@ -1091,15 +1371,19 @@
                     maintainAspectRatio:false,
                     plugins:{
                         legend:{display:false},
-                        tooltip:{ callbacks:{ title:function(items){ return items[0].label; } } }
+                        tooltip:{
+                            callbacks:{
+                                title:function(items){ return items[0].label; }
+                            }
+                        }
                     },
                     scales:{
                         x:{
                             type:'category',
                             min:0, max:index,
                             ticks:{
-                                autoSkip:false, maxRotation:0,
-                                callback:function(val, i){
+                                autoSkip:false, maxRotation:0, minRotation:0,
+                                callback:function(value, i){
                                     const mid = Math.floor(index / 2);
                                     if(i === 0 || i === mid || i === index){ return labels[i]; }
                                     return "";
@@ -1121,30 +1405,292 @@
                 "<b>Min:</b> "+min.toFixed(2)+" nSv/h | "+
                 "<b>Max:</b> "+max.toFixed(2)+" nSv/h";
 
-            document.getElementById("dateFrom").value = slicedLabels[0].replace(" ", "T");
-            document.getElementById("dateTo").value = slicedLabels[slicedLabels.length-1].replace(" ", "T");
+            document.getElementById("dateFrom").value = slicedLabels[0].split(" ")[0];
+            document.getElementById("dateTo").value = slicedLabels[slicedLabels.length-1].split(" ")[0];
         }
 
         function closeTS(){
             document.getElementById("tsModal").classList.add("hidden");
         }
 
-        // SIDEBAR TOGGLE & RUNNING TICKER RESIZE FIX
+        // Statistic Summary Report & Station Details Report (Hanya saat login)
+        function openStatisticSummaryReport(){
+            fetch(getTimeseriesFile() + "?nocache=" + Date.now())
+            .then(r=>r.text())
+            .then(text=>{
+                const rawData = Papa.parse(text,{header:true, skipEmptyLines:true}).data;
+                let allTimes = rawData.map(r => r.time).filter(Boolean).sort();
+                let defaultFrom = allTimes.length > 0 ? allTimes[0].split(" ")[0] : "";
+                let defaultTo = allTimes.length > 0 ? allTimes[allTimes.length - 1].split(" ")[0] : "";
+
+                const html=`<!DOCTYPE html><html><head><meta charset="utf-8">
+                <title>Statistic Summary Report</title>
+                <style>
+                body{font-family:Inter,Arial,sans-serif;margin:20px;background:#f8fafc;color:#1e293b;}
+                h2{color:#0f172a;margin-bottom:15px;font-size:20px;}
+                .filter-bar{display:flex;align-items:center;gap:15px;margin-bottom:15px;background:#fff;padding:15px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.1);border:1px solid #e2e8f0;}
+                .filter-group{display:flex;flex-direction:column;font-size:12px;font-weight:bold;color:#475569;}
+                .filter-group input{margin-top:4px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;}
+                .btn-apply{padding:7px 16px;background:#0284c7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;align-self:flex-end;}
+                .btn-apply:hover{background:#0369a1;}
+                .actions-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;}
+                input#f{padding:8px 12px;width:280px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;}
+                .table-container{max-height:65vh;overflow-y:auto;border:1px solid #cbd5e1;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);}
+                table{border-collapse:collapse;width:100%;font-size:12px;}
+                th,td{border:1px solid #e2e8f0;padding:10px 12px;text-align:center;}
+                th:first-child, td:first-child{text-align:left;}
+                th{background:#0f172a;color:#fff;position:sticky;top:0;z-index:2;}
+                tr:nth-child(even){background:#f8fafc;}
+                .btn-excel{padding:8px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;}
+                .btn-print{padding:8px 14px;background:#0f172a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;margin-left:6px;}
+                </style></head><body>
+                <h2>Statistic Summary Report</h2>
+                
+                <div class="filter-bar">
+                  <div class="filter-group">
+                    <label>From Date</label>
+                    <input type="date" id="from_date" value="${defaultFrom}" onchange="filterData()">
+                  </div>
+                  <div class="filter-group">
+                    <label>To Date</label>
+                    <input type="date" id="to_date" value="${defaultTo}" onchange="filterData()">
+                  </div>
+                  <button class="btn-apply" onclick="filterData()">Apply Filter</button>
+                </div>
+
+                <div class="actions-bar">
+                  <input id="f" placeholder="Search Station..." onkeyup="const v=this.value.toLowerCase();document.querySelectorAll('tbody tr').forEach(r=>r.style.display=r.innerText.toLowerCase().includes(v)?'':'none');">
+                  <div>
+                    <button class="btn-excel" onclick="exportExcel()">💾 Export to Excel</button>
+                    <button class="btn-print" onclick="window.print()">🖨 Print</button>
+                  </div>
+                </div>
+
+                <div class="table-container">
+                <table><thead><tr>
+                <th>Station</th>
+                <th>Latest Value (nSv/h)</th>
+                <th>Maximum Value (nSv/h)</th>
+                <th>Minimum Value (nSv/h)</th>
+                <th>Average Value (nSv/h)</th>
+                <th>Deviation</th>
+                </tr></thead><tbody id="reportTableBody">
+                </tbody></table>
+                </div>
+
+                <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>
+                <script>
+                const rawData = ${JSON.stringify(rawData)};
+
+                function renderTable(dataToProcess){
+                  let stats = {};
+                  dataToProcess.forEach(r=>{
+                    let st = r.station;
+                    if(!st) return;
+                    let v = parseFloat(r.dose);
+                    if(isNaN(v)) return;
+                    let t = r.time;
+
+                    if(!stats[st]){
+                      stats[st] = { values: [], latestTime: t, latestVal: v };
+                    }
+                    stats[st].values.push(v);
+                    if(t >= stats[st].latestTime){
+                      stats[st].latestTime = t;
+                      stats[st].latestVal = v;
+                    }
+                  });
+
+                  let rows = "";
+                  Object.keys(stats).sort().forEach(st=>{
+                    let s = stats[st];
+                    let vals = s.values;
+                    let count = vals.length;
+                    if(count === 0) return;
+
+                    let max = Math.max(...vals);
+                    let min = Math.min(...vals);
+                    let sum = vals.reduce((a,b)=>a+b, 0);
+                    let avg = sum / count;
+                    let variance = vals.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / count;
+                    let dev = Math.sqrt(variance);
+
+                    rows += \`<tr>
+                      <td>\${st}</td>
+                      <td>\${s.latestVal.toFixed(2)}</td>
+                      <td>\${max.toFixed(2)}</td>
+                      <td>\${min.toFixed(2)}</td>
+                      <td>\${avg.toFixed(2)}</td>
+                      <td>\${dev.toFixed(2)}</td>
+                    </tr>\`;
+                  });
+                  document.getElementById('reportTableBody').innerHTML = rows;
+                }
+
+                function filterData(){
+                  let fDate = document.getElementById('from_date').value;
+                  let tDate = document.getElementById('to_date').value;
+                  if(!fDate || !tDate){ renderTable(rawData); return; }
+
+                  let filtered = rawData.filter(r => {
+                    if(!r.time) return false;
+                    let rDate = r.time.split(' ')[0];
+                    return rDate >= fDate && rDate <= tDate;
+                  });
+                  renderTable(filtered);
+                }
+
+                function exportExcel(){
+                 const table=document.querySelector('table');
+                 const wb=XLSX.utils.table_to_book(table,{sheet:'Statistic Summary'});
+                 const d=new Date();
+                 const f='Statistic_Summary_Report_'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'.xlsx';
+                 XLSX.writeFile(wb,f);
+                }
+
+                filterData();
+                <\/script>
+                </body></html>`;
+
+                const w = window.open("","StatisticSummaryReport");
+                w.document.write(html);
+                w.document.close();
+            });
+        }
+
+        function openStationDetails(){
+            const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+            <title>Station Details</title>
+            <style>
+            body{font-family:Inter,Arial,sans-serif;margin:20px;background:#f8fafc;color:#1e293b;}
+            h2{color:#0f172a;margin-bottom:15px;font-size:20px;display:inline-block;}
+            table{border-collapse:collapse;width:100%;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);}
+            th,td{border:1px solid #e2e8f0;padding:10px 12px;text-align:center;}
+            th{background:#0f172a;color:#fff;position:sticky;top:0;}
+            input{margin-bottom:15px;padding:8px 12px;width:280px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;}
+            button{float:right;padding:8px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;}
+            button:hover{background:#15803d;}
+            </style></head><body>
+            <h2>Station Details</h2>
+            <button onclick="exportExcel()">💾 Save as Excel</button><br clear="all">
+            <input id="f" placeholder="Search..." onkeyup="const v=this.value.toLowerCase();document.querySelectorAll('tbody tr').forEach(r=>r.style.display=r.innerText.toLowerCase().includes(v)?'':'none');">
+            <table><thead><tr>
+            <th>Station</th><th>Latitude</th><th>Longitude</th><th>Address</th><th>Province</th><th>Status</th><th>Operation Start Date</th><th>Last Operation</th><th>Last Maintenance</th><th>Battery Replacement Date</th><th>Detector Running Time (days)</th><th>Battery Running Time (days)</th><th>Days Since Last Maintenance (days)</th>
+            </tr></thead><tbody>`;
+
+            function p(s){
+                if(!s)return null;
+                const m={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+                let a=s.trim().split("-");
+                if(a.length==3){let y=parseInt(a[2]);y+=(y<70)?2000:1900;return new Date(y,m[a[1]],parseInt(a[0]));}
+                let d=new Date(s);return isNaN(d)?null:d;
+            }
+
+            let rows = "";
+            Object.values(window.profileIndex).forEach(r=>{
+                let st=(r.Status||"").toLowerCase();
+                let s=p(r["Operation Start Date"]);
+                let lo=p(r["Last Operation"]);
+                let lm=p(r["Last Maintenance Date"]);
+                let br=p(r["Battery Replacement Date"]);
+                let now=new Date();
+                let det=(s&&((st=="online")?now:lo))?Math.floor((((st=="online")?now:lo)-s)/86400000):"";
+                let bat=br?Math.floor((now-br)/86400000):"";
+                let mnt=lm?Math.floor((now-lm)/86400000):"";
+                rows+=`<tr><td>${r.station||r["NAMA UNIT"]||""}</td><td>${r.Latitude||r["LATITUDE"]||""}</td><td>${r.Longitude||r["LONGITUDE"]||""}</td><td>${r.Address||""}</td><td>${r.Province||""}</td><td>${r.Status||""}</td><td>${r["Operation Start Date"]||""}</td><td>${r["Last Operation"]||""}</td><td>${r["Last Maintenance Date"]||""}</td><td>${r["Battery Replacement Date"]||""}</td><td>${det}</td><td>${bat}</td><td>${mnt}</td></tr>`;
+            });
+
+            const w = window.open("","StationDetails");
+            w.document.write(html+rows+`</tbody></table>
+            <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>
+            <script>
+            function exportExcel(){
+             const table=document.querySelector('table');
+             const wb=XLSX.utils.table_to_book(table,{sheet:'Stations'});
+             const d=new Date();
+             const f='Station_Details_'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'.xlsx';
+             XLSX.writeFile(wb,f);
+            }
+            <\/script>
+            </body></html>`);
+            w.document.close();
+        }
+
+        // Status Donut Modal
+        let statusChart = null;
+
+        function openStatusDonut(){
+            document.getElementById("statusDonutModal").classList.remove("hidden");
+            refreshStatusDonut();
+        }
+
+        function closeStatusDonut(){
+            document.getElementById("statusDonutModal").classList.add("hidden");
+        }
+
+        function refreshStatusDonut(){
+            fetch(getProfileFile() + "?nocache=" + Date.now())
+            .then(r=>r.text())
+            .then(text=>{
+                let rows = Papa.parse(text,{header:true, skipEmptyLines:true}).data;
+                let online=0, offline=0, maintenance=0;
+
+                rows.forEach(r=>{
+                    let s=(r.Status||"").trim().toLowerCase();
+                    if(s==="online") online++;
+                    else if(s==="offline") offline++;
+                    else if(s==="maintenance") maintenance++;
+                });
+
+                document.getElementById("onlineCount").textContent = online;
+                document.getElementById("offlineCount").textContent = offline;
+                document.getElementById("maintenanceCount").textContent = maintenance;
+
+                if(statusChart) statusChart.destroy();
+
+                statusChart = new Chart(document.getElementById("statusDonutChart"),{
+                    type:"doughnut",
+                    data:{
+                        labels:["Online","Offline","Maintenance"],
+                        datasets:[{
+                            data:[online,offline,maintenance],
+                            backgroundColor:["#059669","#dc2626","#eab308"],
+                            borderWidth:2
+                        }]
+                    },
+                    options:{
+                        responsive:true,
+                        maintainAspectRatio:false,
+                        cutout:"60%",
+                        plugins:{
+                            legend:{
+                                position:"bottom",
+                                labels:{ boxWidth:10, padding:10, font:{size:11} }
+                            },
+                            tooltip:{
+                                callbacks:{
+                                    label:function(ctx){ return ctx.label+" : "+ctx.raw+" Station"; }
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        // Sidebar Toggle & Ticker Positioning
         function toggleSidebar(){
             const sidebar = document.getElementById("sidePanel");
             const ticker = document.getElementById("statusTicker");
-
             const isCollapsed = sidebar.classList.contains("-translate-x-full");
 
             if(isCollapsed){
                 sidebar.classList.remove("-translate-x-full");
-                
                 const sidebarWidth = sidebar.offsetWidth || 384;
                 ticker.style.left = sidebarWidth + "px";
                 ticker.style.width = `calc(100% - ${sidebarWidth}px)`;
             }else{
                 sidebar.classList.add("-translate-x-full");
-                
                 ticker.style.left = "0px";
                 ticker.style.width = "100%";
             }
@@ -1159,7 +1705,7 @@
             window.requestAnimationFrame(animateMapResize);
         }
 
-        // IAEA LEGEND
+        // IAEA Legend
         var legend = L.control({position:"bottomleft"});
         legend.onAdd = function(){
             var div = L.DomUtil.create("div","legend");
@@ -1200,7 +1746,7 @@
         };
         legend.addTo(map);
 
-        // STATUS TICKER
+        // Status Ticker
         function updateStatusTicker(){
             let maxDose = -1;
             let latestTime = null;
@@ -1250,17 +1796,28 @@
         }
 
         function updateAuthUI(session) {
+            isLoggedIn = !!session;
             const btnLogin = document.getElementById('btn-login-admin');
             const labelBtn = document.getElementById('label-login-btn');
+            const openDonutBtn = document.getElementById('openDonutBtn');
+            const reportBtn = document.getElementById('reportBtn');
+            const headerSubtitle = document.getElementById('headerSubtitle');
         
             if (session) {
                 labelBtn.innerText = "Logout (" + session.user.email.split('@')[0] + ")";
                 btnLogin.onclick = logoutAdmin;
-                btnLogin.className = "px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
+                btnLogin.className = "px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
+                if(openDonutBtn) openDonutBtn.classList.remove('hidden');
+                if(reportBtn) reportBtn.classList.remove('hidden');
+                if(headerSubtitle) headerSubtitle.innerText = "Direktorat Keteknikan dan Kesiapsiagaan Nuklir — BAPETEN (Backend Admin)";
             } else {
                 labelBtn.innerText = "Login";
                 btnLogin.onclick = openLoginModal;
                 btnLogin.className = "px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
+                if(openDonutBtn) openDonutBtn.classList.add('hidden');
+                if(reportBtn) reportBtn.classList.add('hidden');
+                if(headerSubtitle) headerSubtitle.innerText = "Direktorat Keteknikan dan Kesiapsiagaan Nuklir — BAPETEN";
+                closeStatusDonut();
             }
         }
 
@@ -1311,30 +1868,33 @@
             } else {
                 updateAuthUI(data.session);
                 closeLoginModal();
-                window.location.href = "backend.html";
+                loadProfile();
+                loadCSV();
+                updateSidePanel();
             }
         }
 
         async function logoutAdmin() {
             await supabaseClient.auth.signOut();
             updateAuthUI(null);
+            loadProfile();
+            loadCSV();
+            updateSidePanel();
         }
 
-        // INITIALIZATION
+        setInterval(function(){
+            if(!document.getElementById("statusDonutModal").classList.contains("hidden")){
+                refreshStatusDonut();
+            }
+        }, 30000);
+
         window.onload = function(){
             checkSession();
             loadProfile();
             loadCSV();
             updateSidePanel();
+            setInterval(updateSidePanel, 30000);
 
-            // Memastikan peta Leaflet merender ulang ukuran dengan benar setelah DOM dimuat
-            setTimeout(() => {
-                if (map) {
-                    map.invalidateSize();
-                }
-            }, 300);
-
-            // Penyesuaian posisi awal ticker saat panel tertutup default
             const sidebar = document.getElementById("sidePanel");
             const ticker = document.getElementById("statusTicker");
             if (sidebar && ticker) {
@@ -1348,13 +1908,8 @@
                 }
             }
 
-            setInterval(loadCSV, 30000);
-            setInterval(updateSidePanel, 30000);
-
-            map.on("zoomend", loadCSV);
             window.addEventListener("resize", ()=>{ 
                 drawAvgChart(); 
-                if (map) map.invalidateSize();
                 const isCollapsed = sidebar.classList.contains("-translate-x-full");
                 if (!isCollapsed) {
                     const sidebarWidth = sidebar.offsetWidth || 384;
