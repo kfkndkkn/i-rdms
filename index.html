@@ -411,7 +411,6 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZHBtd2lia2t6dm51aGxzemV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Mjc2NDgsImV4cCI6MjEwNzUwMzY0OH0.AMLnYZmWaoFGcNEK6j19-3cdJgCAJYh_W4dsGhc5gRg';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Menyimpan object user yang sedang login dari tabel 'users'
         let currentUser = null; 
 
         function normalizeName(name){
@@ -442,7 +441,7 @@
             };
         }
 
-        // Memuat profil stasiun langsung dari tabel Supabase
+        // Memuat profil stasiun dengan async/await yang benar
         async function loadProfile(){
             let { data, error } = await supabaseClient.from('profiles_backend').select('*');
             if(error){
@@ -670,6 +669,9 @@
         }
 
         async function loadCSV(){
+            // Pastikan profil selesai dimuat terlebih dahulu sebelum memproses stasiun
+            await loadProfile();
+
             loadLatestTimeseries(async ()=>{
                 let { data: rawData, error } = await supabaseClient.from('stations_all').select('*');
                 if(error){
@@ -690,7 +692,7 @@
                     let name = r["NAMA UNIT"] || r["station"];
                     var key = normalizeName(name);
                     
-                    // Filter berdasarkan role user jika diperlukan (misal BRIN atau Obvitnas)
+                    // Filter role khusus
                     if(currentUser && currentUser.role){
                         let roleLower = currentUser.role.toLowerCase();
                         if(roleLower.includes('brin') && !name.toLowerCase().includes('brin')) return;
@@ -732,13 +734,6 @@
                 data.forEach(row=>{
                     var stationName = row["NAMA UNIT"] || row["station"] || (row.stations ? row.stations[0].name : "");
                     
-                    const profileCurrent = window.profileIndex[normalizeName(stationName)];
-                    const statusCurrent = (profileCurrent?.Status || "").trim().toLowerCase();
-                    // Jika tidak online, lewati agar peta tidak terlalu penuh (atau sesuaikan kebutuhan)
-                    if (statusCurrent && statusCurrent !== "online" && !currentUser) {
-                        // Biarkan tampil jika sudah login atau sesuai kebutuhan
-                    }
-
                     var lat = row.lat;
                     var lon = row.lon;
 
@@ -1759,7 +1754,6 @@
                 currentUser = data; 
                 updateAuthUI();
                 closeLoginModal();
-                loadProfile();
                 loadCSV();
                 updateSidePanel();
             }
@@ -1768,7 +1762,6 @@
         function logoutCustomUser() {
             currentUser = null;
             updateAuthUI();
-            loadProfile();
             loadCSV();
             updateSidePanel();
         }
@@ -1814,7 +1807,6 @@
 
         window.onload = function(){
             updateAuthUI();
-            loadProfile();
             loadCSV();
             updateSidePanel();
             setInterval(updateSidePanel, 30000);
