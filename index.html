@@ -442,7 +442,7 @@
             };
         }
 
-        // Memuat profil stasiun langsung dari tabel Supabase (Difilter otomatis oleh RLS database)
+        // Memuat profil stasiun langsung dari tabel Supabase
         async function loadProfile(){
             let { data, error } = await supabaseClient.from('profiles_backend').select('*');
             if(error){
@@ -647,6 +647,7 @@
             let { data, error } = await supabaseClient.from('timeseries_all').select('*');
             if(error){
                 console.error("Error loading timeseries from Supabase:", error.message);
+                if(callback) callback();
                 return;
             }
             var latest = {};
@@ -688,6 +689,14 @@
                 (rawData || []).forEach(r=>{
                     let name = r["NAMA UNIT"] || r["station"];
                     var key = normalizeName(name);
+                    
+                    // Filter berdasarkan role user jika diperlukan (misal BRIN atau Obvitnas)
+                    if(currentUser && currentUser.role){
+                        let roleLower = currentUser.role.toLowerCase();
+                        if(roleLower.includes('brin') && !name.toLowerCase().includes('brin')) return;
+                        if(roleLower.includes('obvitnas') && !name.toLowerCase().includes('obvitnas')) return;
+                    }
+
                     window.stationIndex[key] = r;
                 });
                 
@@ -725,8 +734,9 @@
                     
                     const profileCurrent = window.profileIndex[normalizeName(stationName)];
                     const statusCurrent = (profileCurrent?.Status || "").trim().toLowerCase();
-                    if (statusCurrent !== "online") {
-                        return;
+                    // Jika tidak online, lewati agar peta tidak terlalu penuh (atau sesuaikan kebutuhan)
+                    if (statusCurrent && statusCurrent !== "online" && !currentUser) {
+                        // Biarkan tampil jika sudah login atau sesuai kebutuhan
                     }
 
                     var lat = row.lat;
@@ -754,9 +764,6 @@
                     if(row.count){
                         var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'><b>Aggregated Stations ("+row.count+")</b><br><br>";
                         row.stations.forEach(s=>{
-                            const pSt = window.profileIndex[normalizeName(s.name)];
-                            if (!pSt || (pSt?.Status||"").toLowerCase() !== "online") return;
-
                             var k = normalizeName(s.name);
                             var tss = window.latestTS[k];
                             var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
@@ -922,7 +929,7 @@
                 var v = parseFloat(r.dose);
                 if(t >= sevenDaysAgo && t <= now && !isNaN(v)){
                     var key = normalizeName(r.station);
-                    if(!activeStations.has(key)) return;
+                    if(activeStations.size > 0 && !activeStations.has(key)) return;
                     if(!grouped[r.station]) grouped[r.station] = [];
                     grouped[r.station].push(v);
                 }
