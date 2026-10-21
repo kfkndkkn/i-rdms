@@ -391,17 +391,29 @@
             };
         }
 
+        // FUNGSI LOAD PROFILE DARI SUPABASE (Menggantikan fetch profile.csv)
         function loadProfile(){
-            fetch("profile.csv?nocache="+Date.now())
-            .then(r=>r.text())
-            .then(text=>{
-                var data = Papa.parse(text,{header:true,skipEmptyLines:true}).data;
-                window.profileIndex = {};
-                data.forEach(r=>{
-                    var key = normalizeName(r["station"]);
-                    window.profileIndex[key] = r;
+            supabaseClient
+                .from('profiles')
+                .select('*')
+                .then(({ data, error }) => {
+                    if(error){
+                        console.error("Gagal memuat profiles dari Supabase", error);
+                        return;
+                    }
+                    window.profileIndex = {};
+                    data.forEach(r => {
+                        var key = normalizeName(r.station);
+                        window.profileIndex[key] = {
+                            "station": r.station,
+                            "Address": r.address,
+                            "Province": r.province,
+                            "Latitude": r.latitude,
+                            "Longitude": r.longitude,
+                            "IMAGE_URL": r.image_url
+                        };
+                    });
                 });
-            }).catch(e=>console.error("Error load profile.csv", e));
         }
 
         // MAP BASELAYERS (Esri Satellite sebagai Default)
@@ -556,152 +568,170 @@
             return result;
         }
 
+        // FUNGSI LOAD TIMESERIES DARI SUPABASE (Menggantikan fetch timeseries.csv)
         function loadLatestTimeseries(callback){
-            fetch("timeseries.csv?nocache="+Date.now())
-            .then(r=>r.text())
-            .then(text=>{
-                var data = Papa.parse(text,{header:true}).data;
-                var latest = {};
-                data.forEach(r=>{
-                    var key = normalizeName(r.station);
-                    var t = new Date(r.time);
-                    var v = parseFloat(r.dose);
-                    if(isNaN(v)) return;
-                    if(!latest[key] || t > latest[key].time){
-                        latest[key] = {
-                            dose: v,
-                            time: t,
-                            timeStr: r.time,
-                            name: r.station   
-                        };
+            supabaseClient
+                .from('timeseries')
+                .select('*')
+                .then(({ data, error }) => {
+                    if(error){
+                        console.error("Gagal memuat timeseries dari Supabase", error);
+                        return;
                     }
+                    var latest = {};
+                    data.forEach(r=>{
+                        var key = normalizeName(r.station);
+                        var t = new Date(r.time);
+                        var v = parseFloat(r.dose);
+                        if(isNaN(v)) return;
+                        if(!latest[key] || t > latest[key].time){
+                            latest[key] = {
+                                dose: v,
+                                time: t,
+                                timeStr: r.time,
+                                name: r.station   
+                            };
+                        }
+                    });
+                    window.latestTS = latest;
+                    if(callback) callback();
                 });
-                window.latestTS = latest;
-                if(callback) callback();
-            }).catch(e=>console.error("Error timeseries.csv", e));
         }
 
+        // FUNGSI LOAD CSV/STATIONS DARI SUPABASE (Menggantikan fetch output.csv)
         function loadCSV(){
             loadLatestTimeseries(()=>{
-                fetch("output.csv?nocache="+Date.now())
-                .then(r=>r.text())
-                .then(text=>{
-                    polygonLayer.clearLayers();
-                    labelLayer.clearLayers();
-
-                    var radius = getRadius();
-                    var rawData = Papa.parse(text,{header:true,skipEmptyLines:true}).data;
-                    window.stationIndex = {};
-
-                    rawData.forEach(r=>{
-                        var key = normalizeName(r["NAMA UNIT"]);
-                        window.stationIndex[key] = r;
-                    });
-                    
-                    var zoom = map.getZoom();
-                    var data;
-
-                    if(zoom<6){
-                        data = aggregateData(rawData,1);
-                    }else if(zoom<8){
-                        data = aggregateData(rawData,0.5);
-                    }else{
-                        data = rawData;
-                    }
-
-                    data.forEach(row=>{
-                        var lat = row.lat || parseFloat(row["LATITUDE"]);
-                        var lon = row.lon || parseFloat(row["LONGITUDE"]);
-                        var stationName = row["NAMA UNIT"] || (row.stations ? row.stations[0].name : "");
-                        var pos = applyZoomOffset(stationName, lat, lon);
-
-                        lat = pos.lat;
-                        lon = pos.lon;
-                        var key = normalizeName(stationName);
-                        var ts = window.latestTS[key];
-                        var dose = ts ? ts.dose : null;
-
-                        if(isNaN(lat)||isNaN(lon)) return;
-
-                        var color;
-                        if(row.stations){
-                            var hasOOS = row.stations.some(s=>s.dose==="Out of service");
-                            color = hasOOS ? "#2b83ba" : getColor(dose);
-                        }else{
-                            color = getColor(dose);
+                supabaseClient
+                    .from('stations')
+                    .select('*')
+                    .then(({ data: rawData, error }) => {
+                        if(error){
+                            console.error("Gagal memuat stations dari Supabase", error);
+                            return;
                         }
 
-                        var hex;
-                        if(row.stations){
-                            var valid = row.stations.some(s=>{
-                                return window.latestTS[normalizeName(s.name)];
-                            });
-                            hex = createHex(lat,lon,radius, valid ? color : "#8fb9e3",{
-                                opacity: valid ? 0.9 : 0.65,
-                                stroke: valid ? "#ffffff" : "#cbd5e1",
-                                weight: 2
-                            });
+                        polygonLayer.clearLayers();
+                        labelLayer.clearLayers();
+
+                        var radius = getRadius();
+                        window.stationIndex = {};
+
+                        rawData.forEach(r=>{
+                            var key = normalizeName(r["NAMA UNIT"]);
+                            window.stationIndex[key] = {
+                                "NAMA UNIT": r["NAMA UNIT"],
+                                "LATITUDE": r["LATITUDE"],
+                                "LONGITUDE": r["LONGITUDE"],
+                                "Gamma Dose Rate (nSv/h)": r["Gamma Dose Rate (nSv/h)"],
+                                "LAST UPDATE (WIB)": r["LAST UPDATE (WIB)"]
+                            };
+                        });
+                        
+                        var zoom = map.getZoom();
+                        var data;
+                        var rawArray = Object.values(window.stationIndex);
+
+                        if(zoom<6){
+                            data = aggregateData(rawArray,1);
+                        }else if(zoom<8){
+                            data = aggregateData(rawArray,0.5);
                         }else{
-                            if(dose==="Out of service"){
-                                hex = createHex(lat,lon,radius,"#8fb9e3",{ opacity:0.65, stroke:"#cbd5e1", weight:2 });
+                            data = rawArray;
+                        }
+
+                        data.forEach(row=>{
+                            var lat = row.lat || parseFloat(row["LATITUDE"]);
+                            var lon = row.lon || parseFloat(row["LONGITUDE"]);
+                            var stationName = row["NAMA UNIT"] || (row.stations ? row.stations[0].name : "");
+                            var pos = applyZoomOffset(stationName, lat, lon);
+
+                            lat = pos.lat;
+                            lon = pos.lon;
+                            var key = normalizeName(stationName);
+                            var ts = window.latestTS[key];
+                            var dose = ts ? ts.dose : null;
+
+                            if(isNaN(lat)||isNaN(lon)) return;
+
+                            var color;
+                            if(row.stations){
+                                var hasOOS = row.stations.some(s=>s.dose==="Out of service");
+                                color = hasOOS ? "#2b83ba" : getColor(dose);
                             }else{
-                                hex = createHex(lat,lon,radius,color,{ opacity:0.9, stroke:"#ffffff", weight:2 });
+                                color = getColor(dose);
                             }
-                        }
 
-                        var popupContent = "";
-                        if(row.count){
-                            var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'>";
-                            row.stations.forEach(s=>{
-                                var k = normalizeName(s.name);
-                                var tss = window.latestTS[k];
-                                var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
-                                var timeText = tss ? tss.timeStr : "-";
+                            var hex;
+                            if(row.stations){
+                                var valid = row.stations.some(s=>{
+                                    return window.latestTS[normalizeName(s.name)];
+                                });
+                                hex = createHex(lat,lon,radius, valid ? color : "#8fb9e3",{
+                                    opacity: valid ? 0.9 : 0.65,
+                                    stroke: valid ? "#ffffff" : "#cbd5e1",
+                                    weight: 2
+                                });
+                            }else{
+                                if(dose==="Out of service"){
+                                    hex = createHex(lat,lon,radius,"#8fb9e3",{ opacity:0.65, stroke:"#cbd5e1", weight:2 });
+                                }else{
+                                    hex = createHex(lat,lon,radius,color,{ opacity:0.9, stroke:"#ffffff", weight:2 });
+                                }
+                            }
 
-                                listHTML +=
-                                "<div style='border-bottom:1px solid #e2e8f0;padding:6px 0'>"+
-                                "<b>"+s.name+"</b><br>"+
+                            var popupContent = "";
+                            if(row.count){
+                                var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'>";
+                                row.stations.forEach(s=>{
+                                    var k = normalizeName(s.name);
+                                    var tss = window.latestTS[k];
+                                    var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
+                                    var timeText = tss ? tss.timeStr : "-";
+
+                                    listHTML +=
+                                    "<div style='border-bottom:1px solid #e2e8f0;padding:6px 0'>"+
+                                    "<b>"+s.name+"</b><br>"+
+                                    "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
+                                    "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br>"+
+                                    "<a href='#' onclick=\"openTS('"+s.name+"')\" style='color:#059669;font-weight:bold;'>View Time Series</a>"+
+                                    "</div>";
+                                });
+                                listHTML += "</div>";
+                                popupContent = listHTML;
+                            }else{
+                                var doseText = ts ? ts.dose.toFixed(2)+" nSv/h" : "No data";
+                                var timeText = ts ? ts.timeStr : "-";
+                                popupContent =
+                                "<div style='padding:10px;'>"+
+                                "<h4 style='font-weight:bold;color:#0f172a;margin-bottom:4px;'>"+stationName+"</h4>"+
                                 "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
-                                "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br>"+
-                                "<a href='#' onclick=\"openTS('"+s.name+"')\" style='color:#059669;font-weight:bold;'>View Time Series</a>"+
+                                "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br><br>"+
+                                "<a href='#' onclick=\"openTS('"+stationName+"')\" style='background:#0284c7;color:white;padding:4px 8px;border-radius:4px;text-decoration:none;font-size:11px;display:inline-block;'>View Time Series</a>"+
                                 "</div>";
-                            });
-                            listHTML += "</div>";
-                            popupContent = listHTML;
-                        }else{
-                            var doseText = ts ? ts.dose.toFixed(2)+" nSv/h" : "No data";
-                            var timeText = ts ? ts.timeStr : "-";
-                            popupContent =
-                            "<div style='padding:10px;'>"+
-                            "<h4 style='font-weight:bold;color:#0f172a;margin-bottom:4px;'>"+stationName+"</h4>"+
-                            "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
-                            "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br><br>"+
-                            "<a href='#' onclick=\"openTS('"+stationName+"')\" style='background:#0284c7;color:white;padding:4px 8px;border-radius:4px;text-decoration:none;font-size:11px;display:inline-block;'>View Time Series</a>"+
-                            "</div>";
-                        }
+                            }
 
-                        hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
-                        hex.on('click', function(){ this.openPopup(); });
-                        hex.addTo(polygonLayer);
+                            hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
+                            hex.on('click', function(){ this.openPopup(); });
+                            hex.addTo(polygonLayer);
 
-                        if(!row.count || map.getZoom() >= 5){
-                            var labelOffsetLat = lat + (radius/111111)*0.9;
-                            var labelOffsetLon = lon + (radius/(111111*Math.cos(lat*Math.PI/180)))*0.9;
-                            var labelName = row["NAMA UNIT"] || (row.stations && row.stations.length > 0 ? row.stations[0].name : "-");
+                            if(!row.count || map.getZoom() >= 5){
+                                var labelOffsetLat = lat + (radius/111111)*0.9;
+                                var labelOffsetLon = lon + (radius/(111111*Math.cos(lat*Math.PI/180)))*0.9;
+                                var labelName = row["NAMA UNIT"] || (row.stations && row.stations.length > 0 ? row.stations[0].name : "-");
 
-                            var label = L.marker([labelOffsetLat,labelOffsetLon],{
-                                icon: L.divIcon({
-                                    className:'',
-                                    html:'<div class="unit-label">'+labelName+'</div>',
-                                    iconSize:null
-                                })
-                            });
-                            label.addTo(labelLayer);
-                        }
+                                var label = L.marker([labelOffsetLat,labelOffsetLon],{
+                                    icon: L.divIcon({
+                                        className:'',
+                                        html:'<div class="unit-label">'+labelName+'</div>',
+                                        iconSize:null
+                                    })
+                                });
+                                label.addTo(labelLayer);
+                            }
+                        });
+
+                        renderSidebarStationList();
                     });
-
-                    renderSidebarStationList();
-                });
             });
         }
 
@@ -796,85 +826,89 @@
         }
 
         function drawAvgChart(){
-            fetch("timeseries.csv?nocache="+Date.now())
-            .then(r=>r.text())
-            .then(text=>{
-                var data = Papa.parse(text,{header:true}).data;
-                const now = new Date();
-                const sevenDaysAgo = new Date();
-                sevenDaysAgo.setDate(now.getDate() - 7);
-
-                var grouped = {};
-                const activeStations = new Set(Object.keys(window.stationIndex));
-
-                data.forEach(r=>{
-                    var t = new Date(r.time);
-                    var v = parseFloat(r.dose);
-                    if(t >= sevenDaysAgo && t <= now && !isNaN(v)){
-                        var key = normalizeName(r.station);
-                        if(!activeStations.has(key)) return;
-                        if(!grouped[r.station]) grouped[r.station] = [];
-                        grouped[r.station].push(v);
+            supabaseClient
+                .from('timeseries')
+                .select('*')
+                .then(({ data, error }) => {
+                    if(error){
+                        console.error("Gagal memuat timeseries untuk chart dari Supabase", error);
+                        return;
                     }
-                });
+                    const now = new Date();
+                    const sevenDaysAgo = new Date();
+                    sevenDaysAgo.setDate(now.getDate() - 7);
 
-                var result = [];
-                Object.keys(grouped).forEach(station=>{
-                    var arr = grouped[station];
-                    var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
-                    result.push({name:station, avg:avg});
-                });
+                    var grouped = {};
+                    const activeStations = new Set(Object.keys(window.stationIndex));
 
-                let screenWidth = window.innerWidth;
-                let topN = screenWidth > 1366 ? 10 : 5;
-
-                result.sort((a,b)=>b.avg - a.avg);
-                var top = result.slice(0, topN);
-
-                var labels = top.map(r=>r.name);
-                var values = top.map(r=>r.avg);
-
-                var currentData = JSON.stringify({ values: values, topN: topN });
-                if(window.lastChartData === currentData) return;
-                window.lastChartData = currentData;
-
-                if(!window.avgChart){
-                    window.avgChart = new Chart(document.getElementById("avgBarChart"),{
-                        type:'bar',
-                        data:{
-                            labels:labels,
-                            datasets:[{
-                                data:values,
-                                backgroundColor:'#0284c7',
-                                borderRadius:4,
-                                barThickness: topN === 10 ? 8 : 12
-                            }]
-                        },
-                        options:{
-                            indexAxis:'y',
-                            responsive:true,
-                            maintainAspectRatio:false,
-                            animation:false,
-                            plugins:{
-                                legend:{display:false},
-                                tooltip:{
-                                    callbacks:{
-                                        label:function(ctx){ return ctx.raw.toFixed(2) + " nSv/h"; }
-                                    }
-                                }
-                            },
-                            scales:{
-                                x:{ beginAtZero:true, max:75, title:{display:true, text:"nSv/h"} },
-                                y:{ ticks:{ font:{size:10}, autoSkip:false }, grid:{display:false} }
-                            }
+                    data.forEach(r=>{
+                        var t = new Date(r.time);
+                        var v = parseFloat(r.dose);
+                        if(t >= sevenDaysAgo && t <= now && !isNaN(v)){
+                            var key = normalizeName(r.station);
+                            if(!activeStations.has(key)) return;
+                            if(!grouped[r.station]) grouped[r.station] = [];
+                            grouped[r.station].push(v);
                         }
                     });
-                }else{
-                    window.avgChart.data.labels = labels;
-                    window.avgChart.data.datasets[0].data = values;
-                    window.avgChart.update('none');
-                }
-            });
+
+                    var result = [];
+                    Object.keys(grouped).forEach(station=>{
+                        var arr = grouped[station];
+                        var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
+                        result.push({name:station, avg:avg});
+                    });
+
+                    let screenWidth = window.innerWidth;
+                    let topN = screenWidth > 1366 ? 10 : 5;
+
+                    result.sort((a,b)=>b.avg - a.avg);
+                    var top = result.slice(0, topN);
+
+                    var labels = top.map(r=>r.name);
+                    var values = top.map(r=>r.avg);
+
+                    var currentData = JSON.stringify({ values: values, topN: topN });
+                    if(window.lastChartData === currentData) return;
+                    window.lastChartData = currentData;
+
+                    if(!window.avgChart){
+                        window.avgChart = new Chart(document.getElementById("avgBarChart"),{
+                            type:'bar',
+                            data:{
+                                labels:labels,
+                                datasets:[{
+                                    data:values,
+                                    backgroundColor:'#0284c7',
+                                    borderRadius:4,
+                                    barThickness: topN === 10 ? 8 : 12
+                                }]
+                            },
+                            options:{
+                                indexAxis:'y',
+                                responsive:true,
+                                maintainAspectRatio:false,
+                                animation:false,
+                                plugins:{
+                                    legend:{display:false},
+                                    tooltip:{
+                                        callbacks:{
+                                            label:function(ctx){ return ctx.raw.toFixed(2) + " nSv/h"; }
+                                        }
+                                    }
+                                },
+                                scales:{
+                                    x:{ beginAtZero:true, max:75, title:{display:true, text:"nSv/h"} },
+                                    y:{ ticks:{ font:{size:10}, autoSkip:false }, grid:{display:false} }
+                                }
+                            }
+                        });
+                    }else{
+                        window.avgChart.data.labels = labels;
+                        window.avgChart.data.datasets[0].data = values;
+                        window.avgChart.update('none');
+                    }
+                });
         }
 
         // TIME SERIES (TREND)
@@ -898,7 +932,7 @@
             document.getElementById("tsStats").innerHTML = "";
 
             var img = document.getElementById("tsImage");
-            var url = profileData?.["IMAGE_URL"];
+            var url = profileData?.["image_url"] || profileData?.["IMAGE_URL"];
             if(url){
                 img.src = url.trim();
                 img.onerror = function(){ this.src = "https://via.placeholder.com/250x150?text=Gambar+Tidak+Tersedia"; };
@@ -912,63 +946,67 @@
 
             document.getElementById("tsMeta").innerHTML =
                 "<div class='font-bold text-slate-900 text-sm mb-1'>"+station+"</div>"+
-                "<b>Alamat:</b> "+(profileData?.["Address"] || profileData?.["ADDRESS"] || "-")+"<br>"+
-                "<b>Provinsi:</b> "+(profileData?.["Province"] || profileData?.["PROVINCE"] || "-")+"<br>"+
-                "<b>Latitude:</b> "+(profileData?.["Latitude"] || profileData?.["LATITUDE"] || "-")+"<br>"+
-                "<b>Longitude:</b> "+(profileData?.["Longitude"] || profileData?.["LONGITUDE"] || "-")+"<br>"+
+                "<b>Alamat:</b> "+(profileData?.["address"] || profileData?.["Address"] || "-")+"<br>"+
+                "<b>Provinsi:</b> "+(profileData?.["province"] || profileData?.["Province"] || "-")+"<br>"+
+                "<b>Latitude:</b> "+(profileData?.["latitude"] || profileData?.["Latitude"] || "-")+"<br>"+
+                "<b>Longitude:</b> "+(profileData?.["longitude"] || profileData?.["Longitude"] || "-")+"<br>"+
                 "<b>Status:</b> "+statusText;
 
-            fetch("timeseries.csv?nocache="+Date.now())
-            .then(r=>r.text())
-            .then(text=>{
-                var data = Papa.parse(text,{header:true}).data;
-                const now = new Date();
-                const oneMonthAgo = new Date();
-                oneMonthAgo.setMonth(now.getMonth() - 1);
-
-                var dailyGroup = {};
-                data.forEach(r=>{
-                    if(normalizeName(r.station) === normalizeName(station)){
-                        var t = new Date(r.time);
-                        var v = parseFloat(r.dose);
-                        if(t >= oneMonthAgo && t <= now && !isNaN(v)){
-                            var dayKey = t.toISOString().split("T")[0];
-                            if(!dailyGroup[dayKey]) dailyGroup[dayKey] = [];
-                            dailyGroup[dayKey].push(v);
-                        }
+            supabaseClient
+                .from('timeseries')
+                .select('*')
+                .then(({ data, error }) => {
+                    if(error){
+                        console.error("Gagal memuat detail timeseries dari Supabase", error);
+                        return;
                     }
+                    const now = new Date();
+                    const oneMonthAgo = new Date();
+                    oneMonthAgo.setMonth(now.getMonth() - 1);
+
+                    var dailyGroup = {};
+                    data.forEach(r=>{
+                        if(normalizeName(r.station) === normalizeName(station)){
+                            var t = new Date(r.time);
+                            var v = parseFloat(r.dose);
+                            if(t >= oneMonthAgo && t <= now && !isNaN(v)){
+                                var dayKey = t.toISOString().split("T")[0];
+                                if(!dailyGroup[dayKey]) dailyGroup[dayKey] = [];
+                                dailyGroup[dayKey].push(v);
+                            }
+                        }
+                    });
+
+                    allLabels = []; allValues = [];
+                    Object.keys(dailyGroup).sort().forEach(day=>{
+                        var arr = dailyGroup[day];
+                        var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
+                        allLabels.push(day);
+                        allValues.push(avg);
+                    });
+
+                    if(allValues.length===0){
+                        document.getElementById("tsStats").innerHTML = "No data available";
+                        return;
+                    }
+
+                    var fromInput = document.getElementById("dateFrom");
+                    var toInput = document.getElementById("dateTo");
+                    if(allLabels.length > 0){
+                        fromInput.value = allLabels[0].replace(" ", "T");
+                        toInput.value = allLabels[allLabels.length-1].replace(" ", "T");
+                    }
+
+                    fromInput.onchange = applyDateFilter;
+                    toInput.onchange = applyDateFilter;
+
+                    var slider = document.getElementById("timeSlider");
+                    var lastIndex = allValues.length - 1;
+                    slider.min = 0; slider.max = lastIndex; slider.step = 1; slider.value = lastIndex;
+
+                    updateChartUnified(lastIndex);
+                    slider.oninput = function(){ updateChartUnified(parseInt(this.value)); };
                 });
-
-                allLabels = []; allValues = [];
-                Object.keys(dailyGroup).sort().forEach(day=>{
-                    var arr = dailyGroup[day];
-                    var avg = arr.reduce((a,b)=>a+b,0) / arr.length;
-                    allLabels.push(day);
-                    allValues.push(avg);
-                });
-
-                if(allValues.length===0){
-                    document.getElementById("tsStats").innerHTML = "No data available";
-                    return;
-                }
-
-                var fromInput = document.getElementById("dateFrom");
-                var toInput = document.getElementById("dateTo");
-                if(allLabels.length > 0){
-                    fromInput.value = allLabels[0].replace(" ", "T");
-                    toInput.value = allLabels[allLabels.length-1].replace(" ", "T");
-                }
-
-                fromInput.onchange = applyDateFilter;
-                toInput.onchange = applyDateFilter;
-
-                var slider = document.getElementById("timeSlider");
-                var lastIndex = allValues.length - 1;
-                slider.min = 0; slider.max = lastIndex; slider.step = 1; slider.value = lastIndex;
-
-                updateChartUnified(lastIndex);
-                slider.oninput = function(){ updateChartUnified(parseInt(this.value)); };
-            });
         }
 
         function applyDateFilter(){
