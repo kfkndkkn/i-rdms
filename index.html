@@ -411,8 +411,9 @@
             console.error("Gagal membaca data sesi dari localStorage:", e);
         }
 
+        // Fungsi normalisasi nama stasiun yang lebih toleran (menyatukan spasi & tanda hubung)
         function normalizeName(name){
-            return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
+            return (name || "").toString().trim().toLowerCase().replace(/[\s\-]+/g," ");
         }
 
         // Daftar stasiun publik default
@@ -681,16 +682,24 @@
             return result;
         }
 
+        // OPTIMASI: Hanya memuat data timeseries 1 bulan terakhir agar cepat
         async function fetchAllTimeseries() {
             let allData = [];
             let page = 0;
             const pageSize = 1000;
             let hasMore = true;
 
+            let d = new Date();
+            d.setMonth(d.getMonth() - 1);
+            let oneMonthAgoStr = d.toISOString().split('T')[0];
+
+            console.log("Memuat timeseries mulai tanggal:", oneMonthAgoStr);
+
             while (hasMore) {
                 let { data, error } = await supabaseClient
                     .from('timeseries_all')
                     .select('*')
+                    .gte('time', oneMonthAgoStr)
                     .range(page * pageSize, (page + 1) * pageSize - 1);
 
                 if (error) {
@@ -743,23 +752,30 @@
             if (!currentUser) {
                 allowedStations = publicStations;
                 filterOnlyOnline = true;
+                console.log("Mode: Publik (Menampilkan stasiun publik online)");
             } else {
                 let roleLower = (currentUser.role || "").toLowerCase();
                 let usernameLower = (currentUser.username || "").toLowerCase();
 
+                console.log("Mode: Login User:", currentUser.username, "| Role:", currentUser.role);
+
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
                     allowedStations = null; // Admin melihat seluruh stasiun
+                    console.log("Akses: Admin (Semua stasiun diizinkan)");
                 } else {
-                    // Mengambil daftar stasiun secara dinamis dari tabel permissions Supabase berdasarkan username yang login (tidak case-sensitive)
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
                         .ilike('username', currentUser.username);
                         
+                    console.log("Hasil query user_station_permissions:", permData, "Error:", permError);
+
                     if (!permError && permData && permData.length > 0) {
                         allowedStations = new Set(permData.map(p => normalizeName(p.station_name)));
+                        console.log("Stasiun yang diizinkan (Normalized):", Array.from(allowedStations));
                     } else {
                         allowedStations = new Set();
+                        console.warn("Tidak ada izin stasiun ditemukan untuk user ini!");
                     }
                 }
             }
@@ -767,7 +783,6 @@
             loadLatestTimeseries(async ()=>{
                 window.stationIndex = {};
 
-                // Menggunakan profiles_backend sebagai sumber stasiun agar stasiun operator (BRIN/Obvitnas) ikut termuat dengan koordinatnya
                 Object.keys(window.profileIndex).forEach(key => {
                     const prof = window.profileIndex[key];
                     const name = prof["station"] || prof["NAMA UNIT"] || key;
@@ -776,7 +791,10 @@
 
                     if (isNaN(lat) || isNaN(lon)) return;
 
-                    if (allowedStations !== null && !allowedStations.has(key)) return;
+                    let normKey = normalizeName(name);
+                    let isAllowed = allowedStations === null || allowedStations.has(normKey);
+
+                    if (!isAllowed) return;
 
                     if (filterOnlyOnline) {
                         let profStatus = (prof.Status || "").toString().trim().toLowerCase();
@@ -790,6 +808,7 @@
                     };
                 });
 
+                console.log("Total stasiun yang berhasil dimuat ke peta:", Object.keys(window.stationIndex).length);
                 renderMap();
             });
         }
