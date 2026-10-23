@@ -1115,85 +1115,87 @@
         var currentGranularity = 'daily';
         var dailyLabels = [], dailyValues = [], hourlyLabels = [], hourlyValues = [];
 
-        async function openTS(station){
-            isFiltered = false;
-            currentGranularity = 'daily';
-            var key = normalizeName(station);
-            var profileData = window.profileIndex[key];
+     async function openTS(station){
+    isFiltered = false;
+    currentGranularity = 'daily';
+    var key = normalizeName(station);
+    var profileData = window.profileIndex[key];
 
-            document.getElementById("tsModal").classList.remove("hidden");
-            document.getElementById("tsTitle").innerHTML = "<i class='fa-solid fa-chart-line mr-2'></i> Time Series — " + station;
+    document.getElementById("tsModal").classList.remove("hidden");
+    document.getElementById("tsTitle").innerHTML = "<i class='fa-solid fa-chart-line mr-2'></i> Time Series — " + station;
 
-            allLabels = []; allValues = [];
-            if(tsChart){ tsChart.destroy(); tsChart = null; }
+    allLabels = []; allValues = [];
+    if(tsChart){ tsChart.destroy(); tsChart = null; }
 
-            document.getElementById("selectedTime").innerHTML = "";
-            document.getElementById("tsStats").innerHTML = "";
+    document.getElementById("selectedTime").innerHTML = "";
+    document.getElementById("tsStats").innerHTML = "";
 
-            var img = document.getElementById("tsImage");
-            var url = profileData?.["IMAGE_URL"];
-            if(url){
-                img.src = url.trim();
-                img.onerror = function(){ this.src = "https://via.placeholder.com/250x150?text=Gambar+Tidak+Tersedia"; };
-            }else{
-                img.src = "https://via.placeholder.com/250x150?text=Gambar+Tidak+Tersedia";
-            }
+    var img = document.getElementById("tsImage");
+    var url = profileData?.["IMAGE_URL"];
+    if(url){
+        img.src = url.trim();
+        img.onerror = function(){ this.src = "https://via.placeholder.com/250x150?text=Gambar+Tidak+Tersedia"; };
+    }else{
+        img.src = "https://via.placeholder.com/250x150?text=Gambar+Tidak+Tersedia";
+    }
 
-            let status = (profileData?.Status || "").toLowerCase();
-            let statusText;
-            if(status==="online"){
-                statusText="<span class='status-online'>Online</span>";
-            }else if(status==="maintenance"){
-                statusText="<span style='color:#ff9800;font-weight:bold'>Maintenance</span>";
-            }else if(status==="offline"){
-                statusText="<span class='status-oos'>Offline</span>";
-            }else{
-                statusText="<span style='color:#777'>Unknown</span>";
-            }
+    let status = (profileData?.Status || "").toLowerCase();
+    let statusText;
+    if(status==="online"){
+        statusText="<span class='status-online'>Online</span>";
+    }else if(status==="maintenance"){
+        statusText="<span style='color:#ff9800;font-weight:bold'>Maintenance</span>";
+    }else if(status==="offline"){
+        statusText="<span class='status-oos'>Offline</span>";
+    }else{
+        statusText="<span style='color:#777'>Unknown</span>";
+    }
 
-            document.getElementById("tsMeta").innerHTML =
-                "<div class='font-bold text-slate-900 text-sm mb-1'>"+station+"</div>"+
-                "<b>Alamat:</b> "+(profileData?.Address || "-")+"<br>"+
-                "<b>Provinsi:</b> "+(profileData?.Province || "-")+"<br>"+
-                "<b>Latitude:</b> "+(profileData?.Latitude || "-")+"<br>"+
-                "<b>Longitude:</b> "+(profileData?.Longitude || "-")+"<br>"+
-                "<b>Status:</b> "+statusText;
+    document.getElementById("tsMeta").innerHTML =
+        "<div class='font-bold text-slate-900 text-sm mb-1'>"+station+"</div>"+
+        "<b>Alamat:</b> "+(profileData?.Address || "-")+"<br>"+
+        "<b>Provinsi:</b> "+(profileData?.Province || "-")+"<br>"+
+        "<b>Latitude:</b> "+(profileData?.Latitude || "-")+"<br>"+
+        "<b>Longitude:</b> "+(profileData?.Longitude || "-")+"<br>"+
+        "<b>Status:</b> "+statusText;
 
-            let allStationData = [];
-            let page = 0;
-            const pageSize = 1000;
-            let hasMore = true;
+    let allStationData = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-            while (hasMore) {
-                // Menggunakan .ilike agar pencocokan nama stasiun fleksibel terhadap spasi/kapital/karakter khusus
-                let { data, error } = await supabaseClient
-                    .from('timeseries_all')
-                    .select('*')
-                    .ilike('station', station.trim())
-                    .order('time', { ascending: true })
-                    .range(page * pageSize, (page + 1) * pageSize - 1);
+    // Bersihkan nama stasiun dan tambahkan wildcard % untuk mengantisipasi perbedaan spasi/karakter
+    let cleanSearch = station.trim().replace(/%/g, '');
 
-                if (error) {
-                    console.error("Error fetching timeseries for station:", error);
-                    break;
-                }
+    while (hasMore) {
+        let { data, error } = await supabaseClient
+            .from('timeseries_all')
+            .select('*')
+            .ilike('station', `%${cleanSearch}%`) // Menggunakan % agar dapat mencocokkan string secara fleksibel
+            .order('time', { ascending: true })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
 
-                if (data && data.length > 0) {
-                    allStationData = allStationData.concat(data);
-                    if (data.length < pageSize) hasMore = false;
-                    else page++;
-                } else {
-                    hasMore = false;
-                }
-            }
-
-            currentStationRawData = allStationData.filter(r=>{
-                var v = parseFloat(r.dose);
-                return !isNaN(v);
-            });
-
-            processTimeSeriesData();
+        if (error) {
+            console.error("Error fetching timeseries for station:", error);
+            break;
         }
+
+        if (data && data.length > 0) {
+            allStationData = allStationData.concat(data);
+            if (data.length < pageSize) hasMore = false;
+            else page++;
+        } else {
+            hasMore = false;
+        }
+    }
+
+    currentStationRawData = allStationData.filter(r=>{
+        var v = parseFloat(r.dose);
+        return !isNaN(v);
+    });
+
+    processTimeSeriesData();
+}
 
         function processTimeSeriesData(){
             dailyLabels = []; dailyValues = [];
