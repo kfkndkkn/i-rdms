@@ -1165,10 +1165,11 @@
             let hasMore = true;
 
             while (hasMore) {
+                // Menggunakan .ilike agar pencocokan nama stasiun fleksibel terhadap spasi/kapital/karakter khusus
                 let { data, error } = await supabaseClient
                     .from('timeseries_all')
                     .select('*')
-                    .eq('station', station)
+                    .ilike('station', station.trim())
                     .order('time', { ascending: true })
                     .range(page * pageSize, (page + 1) * pageSize - 1);
 
