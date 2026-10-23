@@ -148,7 +148,7 @@
 </head>
 <body class="bg-slate-100 flex flex-col h-full w-full overflow-hidden text-slate-800">
 
-    <!-- Header Navigation (Putih) -->
+    <!-- Header Navigation -->
     <header class="h-16 bg-white border-b border-slate-200 text-slate-800 flex items-center justify-between px-4 z-[9999] shadow-sm flex-shrink-0">
         <div class="flex items-center gap-3">
             <button onclick="toggleSidebar()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2.5 rounded-lg transition-colors border border-slate-200" title="Toggle Sidebar">
@@ -161,7 +161,7 @@
             </div>
         </div>
 
-        <!-- Tombol Login / Logout Kustom (Tabel Users) -->
+        <!-- Tombol Login / Logout -->
         <button id="btn-login-admin" onclick="openLoginModal()" class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1">
             <i class="fa-solid fa-user-lock text-amber-300"></i>
             <span id="label-login-btn">Login</span>
@@ -180,7 +180,6 @@
                         <i class="fa-solid fa-chart-line text-amber-500"></i> Statistik & Monitoring
                     </h2>
                     <div class="flex items-center gap-2">
-                        <!-- Tombol Print Summary Report (Hanya tampil untuk Admin) -->
                         <button id="reportBtn" onclick="openStatisticSummaryReport()" title="Print Summary Report" class="hidden bg-slate-900 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors">
                             <i class="fa-solid fa-print"></i>
                         </button>
@@ -255,7 +254,7 @@
         <marquee id="tickerText" scrollamount="6"></marquee>
     </div>
 
-    <!-- Status Donut Floating Button & Modal (Hanya tampil untuk Admin) -->
+    <!-- Status Donut Floating Button & Modal -->
     <button id="openDonutBtn" onclick="openStatusDonut()" class="hidden fixed top-20 left-4 z-[999] bg-slate-900 text-white w-10 h-10 rounded-full shadow-lg items-center justify-center hover:bg-slate-800 transition-colors" title="Status Detektor">
         <i class="fa-solid fa-chart-pie"></i>
     </button>
@@ -294,7 +293,7 @@
         </div>
     </div>
 
-    <!-- Modal Login Kustom dari Tabel 'users' Supabase -->
+    <!-- Modal Login -->
     <div id="login-modal" class="hidden fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full overflow-hidden transition-all transform scale-100">
             <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
@@ -308,7 +307,6 @@
             </div>
             
             <div class="p-6">
-                <!-- Inline Message Alert Box -->
                 <div id="modal-alert" class="hidden mb-4 p-3 rounded-xl text-xs font-medium"></div>
 
                 <div class="space-y-4">
@@ -344,10 +342,9 @@
         </div>
     </div>
 
-    <!-- Time Series Modal (Trend Analysis) -->
+    <!-- Time Series Modal -->
     <div id="tsModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
-            <!-- Header -->
             <div class="bg-slate-900 text-white px-6 py-4 flex justify-between items-center flex-shrink-0">
                 <div id="tsTitle" class="font-bold text-sm sm:text-base text-amber-400 flex items-center gap-2">
                     <i class="fa-solid fa-chart-line"></i> Time Series
@@ -357,17 +354,13 @@
                 </button>
             </div>
 
-            <!-- Content Container -->
             <div class="p-6 flex flex-col md:flex-row gap-6 overflow-y-auto custom-scrollbar">
-                <!-- Left Panel: Profile & Metadata -->
                 <div class="w-full md:w-64 flex flex-col gap-3 flex-shrink-0">
                     <img id="tsImage" src="" alt="Station Photo" class="w-full h-52 object-cover rounded-xl border border-slate-200 shadow-sm">
                     <div id="tsMeta" class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl text-xs space-y-1.5 text-slate-700"></div>
                 </div>
 
-                <!-- Right Panel: Chart & Date Filter Controls -->
                 <div class="flex-1 flex flex-col gap-4 min-w-0">
-                    <!-- Date Picker & Granularity Bar -->
                     <div id="datePickerBar" class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
                         <div class="flex items-center gap-2">
                             <span class="font-semibold text-slate-600">Granularity:</span>
@@ -388,12 +381,10 @@
                         </div>
                     </div>
 
-                    <!-- Chart Canvas Box -->
                     <div class="h-64 sm:h-72 w-full relative">
                         <canvas id="tsChart"></canvas>
                     </div>
 
-                    <!-- Time Slider & Range Info -->
                     <div class="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                         <input type="range" id="timeSlider" class="w-full accent-sky-600 cursor-pointer">
                         <div id="selectedTime" class="text-xs text-slate-500 font-medium"></div>
@@ -452,7 +443,6 @@
             };
         }
 
-        // Memuat profil stasiun dengan async/await yang benar
         async function loadProfile(){
             let { data, error } = await supabaseClient.from('profiles_backend').select('*');
             if(error){
@@ -686,15 +676,23 @@
             let allowedStations = null;
             if (!currentUser) {
                 allowedStations = publicStations;
-            } else if (currentUser.role !== 'Admin' && (!currentUser.username || !currentUser.username.includes('kfkndkkn'))) {
-                let { data: permData, error: permError } = await supabaseClient
-                    .from('user_station_permissions')
-                    .select('station_name')
-                    .eq('username', currentUser.username);
-                if (!permError && permData) {
-                    allowedStations = new Set(permData.map(p => normalizeName(p.station_name)));
+            } else {
+                let roleLower = (currentUser.role || "").toLowerCase();
+                let usernameLower = (currentUser.username || "").toLowerCase();
+
+                if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
+                    allowedStations = null; // Admin melihat seluruh stasiun
                 } else {
-                    allowedStations = new Set();
+                    let { data: permData, error: permError } = await supabaseClient
+                        .from('user_station_permissions')
+                        .select('station_name')
+                        .eq('username', currentUser.username);
+                        
+                    if (!permError && permData && permData.length > 0) {
+                        allowedStations = new Set(permData.map(p => normalizeName(p.station_name)));
+                    } else {
+                        allowedStations = new Set();
+                    }
                 }
             }
 
@@ -933,17 +931,12 @@
             let { data, error } = await supabaseClient.from('timeseries_all').select('*');
             if(error) return;
 
-            const now = new Date();
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(now.getDate() - 7);
-
             var grouped = {};
             const activeStations = new Set(Object.keys(window.stationIndex));
 
             (data || []).forEach(r=>{
-                var t = new Date(r.time);
                 var v = parseFloat(r.dose);
-                if(t >= sevenDaysAgo && t <= now && !isNaN(v)){
+                if(!isNaN(v)){
                     var key = normalizeName(r.station);
                     if(activeStations.size > 0 && !activeStations.has(key)) return;
                     if(!grouped[r.station]) grouped[r.station] = [];
@@ -997,7 +990,7 @@
                             }
                         },
                         scales:{
-                            x:{ beginAtZero:true, max:75, title:{display:true, text:"nSv/h"} },
+                            x:{ beginAtZero:true, title:{display:true, text:"nSv/h"} },
                             y:{ ticks:{ font:{size:10}, autoSkip:false }, grid:{display:false} }
                         }
                     }
@@ -1009,7 +1002,7 @@
             }
         }
 
-        // Time Series Modal & Advanced Functions
+        // Time Series Modal
         var tsChart = null;
         var allLabels = [], allValues = [], filteredLabels = [], filteredValues = [];
         var isFiltered = false;
@@ -1021,7 +1014,6 @@
             isFiltered = false;
             currentGranularity = 'daily';
             var key = normalizeName(station);
-            var stationData = window.stationIndex[key];
             var profileData = window.profileIndex[key];
 
             document.getElementById("tsModal").classList.remove("hidden");
@@ -1054,49 +1046,23 @@
                 statusText="<span style='color:#777'>Unknown</span>";
             }
 
-            const startDate = profileData?.["Operation Start Date"] || "-";
-            const lastOperation = profileData?.["Last Operation"] || "-";
-
-            let runningDay = "-";
-            function parseCustomDate(s){
-                if(!s || s==="-" ) return null;
-                const m={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
-                const p=s.trim().split("-");
-                if(p.length===3){
-                    let y=parseInt(p[2],10);
-                    y += (y<70)?2000:1900;
-                    return new Date(y,m[p[1]],parseInt(p[0],10));
-                }
-                const d=new Date(s);
-                return isNaN(d.getTime())?null:d;
-            }
-
-            const start=parseCustomDate(startDate);
-            let end=(status==="online")?new Date():parseCustomDate(lastOperation);
-            if(start && end){
-                runningDay=Math.floor((end-start)/86400000);
-            }
-
             document.getElementById("tsMeta").innerHTML =
                 "<div class='font-bold text-slate-900 text-sm mb-1'>"+station+"</div>"+
                 "<b>Alamat:</b> "+(profileData?.Address || "-")+"<br>"+
                 "<b>Provinsi:</b> "+(profileData?.Province || "-")+"<br>"+
                 "<b>Latitude:</b> "+(profileData?.Latitude || "-")+"<br>"+
                 "<b>Longitude:</b> "+(profileData?.Longitude || "-")+"<br>"+
-                "<b>Status:</b> "+statusText+"<br>"+
-                "<b>Running Time:</b> "+runningDay+" days";
+                "<b>Status:</b> "+statusText;
 
             let { data, error } = await supabaseClient.from('timeseries_all').select('*').eq('station', station);
-            if(error) return;
-
-            const now = new Date();
-            const oneMonthAgo = new Date();
-            oneMonthAgo.setMonth(now.getMonth() - 1);
+            if(error) {
+                console.error("Error fetching timeseries for station:", error);
+                return;
+            }
 
             currentStationRawData = (data || []).filter(r=>{
-                var t = new Date(r.time);
                 var v = parseFloat(r.dose);
-                return t >= oneMonthAgo && t <= now && !isNaN(v);
+                return !isNaN(v);
             });
 
             processTimeSeriesData();
@@ -1114,7 +1080,7 @@
                 hourlyLabels.push(r.time);
                 hourlyValues.push(v);
 
-                var dayKey = t.toISOString().split("T")[0];
+                var dayKey = r.time.includes(" ") ? r.time.split(" ")[0] : t.toISOString().split("T")[0];
                 if(!dailyGroup[dayKey]) dailyGroup[dayKey] = [];
                 dailyGroup[dayKey].push(v);
             });
@@ -1349,7 +1315,7 @@
             document.getElementById("tsModal").classList.add("hidden");
         }
 
-        // Statistic Summary Report (Hanya untuk Admin)
+        // Statistic Summary Report
         async function openStatisticSummaryReport(){
             let { data, error } = await supabaseClient.from('timeseries_all').select('*');
             if(error) return;
@@ -1613,7 +1579,6 @@
             });
         }
 
-        // Sidebar Toggle & Ticker Positioning
         function toggleSidebar(){
             const sidebar = document.getElementById("sidePanel");
             const ticker = document.getElementById("statusTicker");
@@ -1681,7 +1646,6 @@
         };
         legend.addTo(map);
 
-        // Status Ticker
         function updateStatusTicker(){
             let maxDose = -1;
             let latestTime = null;
@@ -1724,7 +1688,7 @@
             document.getElementById("tickerText").innerHTML = msg;
         }
 
-        // FUNGSI AUTHENTICATION MENGGUNAKAN TABEL 'users' SUPABASE
+        // FUNGSI AUTHENTICATION
         function openLoginModal() {
             document.getElementById('modal-username').value = '';
             document.getElementById('modal-password').value = '';
@@ -1765,9 +1729,9 @@
             const { data, error } = await supabaseClient
                 .from('users')
                 .select('*')
-                .eq('username', usernameInput)
+                .ilike('username', usernameInput)
                 .eq('password', passwordInput)
-                .single();
+                .maybeSingle();
 
             if (error || !data) {
                 showModalAlert('Login Gagal: Username atau password salah.', 'error');
@@ -1799,7 +1763,8 @@
                 btnLogin.onclick = logoutCustomUser;
                 btnLogin.className = "px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
                 
-                if (currentUser.role === 'Admin') {
+                let roleLower = (currentUser.role || "").toLowerCase();
+                if (roleLower === 'admin' || (currentUser.username && currentUser.username.toLowerCase().includes('kfkndkkn'))) {
                     if(openDonutBtn) openDonutBtn.classList.remove('hidden');
                     if(reportBtn) reportBtn.classList.remove('hidden');
                 } else {
@@ -1807,7 +1772,7 @@
                     if(reportBtn) reportBtn.classList.add('hidden');
                 }
 
-                if(headerSubtitle) headerSubtitle.innerText = "Direktorat Keteknikan dan Kesiapsiagaan Nuklir — BAPETEN (Role: " + currentUser.role + ")";
+                if(headerSubtitle) headerSubtitle.innerText = "Direktorat Keteknikan dan Kesiapsiagaan Nuklir — BAPETEN (Role: " + (currentUser.role || 'Operator') + ")";
             } else {
                 labelBtn.innerText = "Login";
                 btnLogin.onclick = openLoginModal;
