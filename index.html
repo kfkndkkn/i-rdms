@@ -62,9 +62,8 @@
             transition: all 0.25s ease-in-out;
         }
         .hex-catchy:hover {
-            stroke: #ffffff !important;
-            stroke-width: 3px !important;
-            fill-opacity: 1 !important;
+            stroke-width: 3.5px !important;
+            fill-opacity: 0.9 !important;
             filter: drop-shadow(0px 0px 10px rgba(255, 255, 255, 0.8)) drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.6));
         }
 
@@ -541,6 +540,11 @@
             }
         });
 
+        // Event listener zoomend agar pemecahan agregasi/stasiun langsung merespons saat peta dizoom
+        map.on('zoomend', function(){
+            renderMap();
+        });
+
         L.control.layers(
             {
                 "Esri Satellite": esriSat,
@@ -582,7 +586,7 @@
                 color: options.stroke || "#ffffff",
                 weight: options.weight || 2,
                 fillColor: color,
-                fillOpacity: options.opacity || 0.85,
+                fillOpacity: options.opacity !== undefined ? options.opacity : 0.85,
                 className: 'hex-catchy',
                 lineJoin: 'round'
             });
@@ -596,6 +600,37 @@
             if(d<100000) return "#ffe600";
             if(d<1000000) return "#ff9b00";
             return "#ff2b2b";
+        }
+
+        // Helper menentukan border dan transparansi fill berdasarkan status stasiun
+        function getHexStyle(stationRef, dose) {
+            let statuses = [];
+            if (Array.isArray(stationRef)) {
+                stationRef.forEach(s => {
+                    let k = normalizeName(s.name);
+                    let p = window.profileIndex[k];
+                    if (p && p.Status) statuses.push(p.Status.toLowerCase());
+                });
+            } else {
+                let k = normalizeName(stationRef);
+                let p = window.profileIndex[k];
+                if (p && p.Status) statuses.push(p.Status.toLowerCase());
+            }
+
+            let color = getColor(dose);
+            let stroke = "#ffffff";
+            let opacity = 0.85;
+
+            // Jika ada stasiun yang offline atau maintenance dalam klaster/stasiun tersebut
+            if (statuses.includes('offline')) {
+                stroke = "#dc2626"; // Border Merah
+                opacity = 0.30;    // Lebih transparan
+            } else if (statuses.includes('maintenance')) {
+                stroke = "#eab308"; // Border Kuning
+                opacity = 0.30;    // Lebih transparan
+            }
+
+            return { color, stroke, opacity };
         }
 
         function aggregateData(data, gridSize){
@@ -752,13 +787,6 @@
                     return;
                 }
 
-                polygonLayer.clearLayers();
-                labelLayer.clearLayers();
-                onlineLayer.clearLayers();
-                offlineLayer.clearLayers();
-                maintenanceLayer.clearLayers();
-
-                var radius = getRadius();
                 window.stationIndex = {};
 
                 (rawData || []).forEach(r=>{
@@ -774,115 +802,134 @@
 
                     window.stationIndex[key] = r;
                 });
-                
-                var zoom = map.getZoom();
-                var data;
-                let rawArray = Object.values(window.stationIndex);
 
-                if(zoom < 8){
-                    var gridSize = zoom < 6 ? 1.5 : 0.75;
-                    data = aggregateData(rawArray, gridSize);
-                    data.sort((a,b)=>{
-                        const getOrder = (r) => {
-                            if(!r.stations) return 0;
-                            let hasOnline = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="online");
-                            let hasMaint = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="maintenance");
-                            let hasOff = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="offline");
-                            if(hasOnline) return 2;
-                            if(hasMaint) return 1;
-                            return 0;
-                        };
-                        return getOrder(a) - getOrder(b);
-                    });
-                } else {
-                    data = rawArray;
-                    data.sort((a,b)=>{
-                        const sa = (window.profileIndex[normalizeName(a["NAMA UNIT"] || a["station"])]?.Status||"").toLowerCase();
-                        const sb = (window.profileIndex[normalizeName(b["NAMA UNIT"] || b["station"])]?.Status||"").toLowerCase();
-                        const order = {offline:0, maintenance:1, online:2};
-                        return (order[sa]||0)-(order[sb]||0);
-                    });
+                renderMap();
+            });
+        }
+
+        // Fungsi render peta yang dipanggil saat load dan setiap kali terjadi zoomend
+        function renderMap() {
+            polygonLayer.clearLayers();
+            labelLayer.clearLayers();
+            onlineLayer.clearLayers();
+            offlineLayer.clearLayers();
+            maintenanceLayer.clearLayers();
+
+            var radius = getRadius();
+            var zoom = map.getZoom();
+            var data;
+            let rawArray = Object.values(window.stationIndex);
+
+            if(zoom < 8){
+                var gridSize = zoom < 6 ? 1.5 : 0.75;
+                data = aggregateData(rawArray, gridSize);
+                data.sort((a,b)=>{
+                    const getOrder = (r) => {
+                        if(!r.stations) return 0;
+                        let hasOnline = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="online");
+                        let hasMaint = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="maintenance");
+                        let hasOff = r.stations.some(s=>(window.profileIndex[normalizeName(s.name)]?.Status||"").toLowerCase()==="offline");
+                        if(hasOnline) return 2;
+                        if(hasMaint) return 1;
+                        return 0;
+                    };
+                    return getOrder(a) - getOrder(b);
+                });
+            } else {
+                data = rawArray;
+                data.sort((a,b)=>{
+                    const sa = (window.profileIndex[normalizeName(a["NAMA UNIT"] || a["station"])]?.Status||"").toLowerCase();
+                    const sb = (window.profileIndex[normalizeName(b["NAMA UNIT"] || b["station"])]?.Status||"").toLowerCase();
+                    const order = {offline:0, maintenance:1, online:2};
+                    return (order[sa]||0)-(order[sb]||0);
+                });
+            }
+
+            data.forEach(row=>{
+                var stationName = row["NAMA UNIT"] || row["station"] || (row.stations ? row.stations[0].name : "");
+                
+                var lat = row.lat;
+                var lon = row.lon;
+
+                if(!row.stations){
+                    lat = parseFloat(row["LATITUDE"] || row["Latitude"]);
+                    lon = parseFloat(row["LONGITUDE"] || row["Longitude"]);
                 }
 
-                data.forEach(row=>{
-                    var stationName = row["NAMA UNIT"] || row["station"] || (row.stations ? row.stations[0].name : "");
-                    
-                    var lat = row.lat;
-                    var lon = row.lon;
+                var pos = applyZoomOffset(stationName, lat, lon);
+                lat = pos.lat;
+                lon = pos.lon;
 
-                    if(!row.stations){
-                        lat = parseFloat(row["LATITUDE"] || row["Latitude"]);
-                        lon = parseFloat(row["LONGITUDE"] || row["Longitude"]);
-                    }
+                var key = normalizeName(stationName);
+                var ts = window.latestTS[key];
+                var dose = row.dose !== undefined ? row.dose : (ts ? ts.dose : null);
 
-                    var pos = applyZoomOffset(stationName, lat, lon);
-                    lat = pos.lat;
-                    lon = pos.lon;
+                if(isNaN(lat)||isNaN(lon)) return;
 
-                    var key = normalizeName(stationName);
-                    var ts = window.latestTS[key];
-                    var dose = row.dose !== undefined ? row.dose : (ts ? ts.dose : null);
+                // Terapkan styling hexagon berdasarkan status (offline / maintenance / online)
+                let stationRef = row.count ? row.stations : stationName;
+                let hexStyle = getHexStyle(stationRef, dose);
 
-                    if(isNaN(lat)||isNaN(lon)) return;
-
-                    var color = getColor(dose);
-                    var hex = createHex(lat, lon, radius, color, { opacity: 0.85, stroke: "#ffffff", weight: 2 });
-
-                    var popupContent = "";
-                    if(row.count){
-                        var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'><b>Aggregated Stations ("+row.count+")</b><br><br>";
-                        row.stations.forEach(s=>{
-                            var k = normalizeName(s.name);
-                            var tss = window.latestTS[k];
-                            var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
-                            var timeText = tss ? tss.timeStr : "-";
-
-                            listHTML +=
-                            "<div style='border-bottom:1px solid #e2e8f0;padding:6px 0'>"+
-                            "<b>"+s.name+"</b><br>"+
-                            "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
-                            "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br>"+
-                            "<a href='#' onclick=\"openTS('"+s.name+"')\" style='color:#059669;font-weight:bold;'>View Time Series</a>"+
-                            "</div>";
-                        });
-                        listHTML += "</div>";
-                        popupContent = listHTML;
-                    }else{
-                        var doseText = ts ? ts.dose.toFixed(2)+" nSv/h" : "No data";
-                        var timeText = ts ? ts.timeStr : "-";
-                        popupContent =
-                        "<div style='padding:10px;'>"+
-                        "<h4 style='font-weight:bold;color:#0f172a;margin-bottom:4px;'>"+stationName+"</h4>"+
-                        "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
-                        "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br><br>"+
-                        "<a href='#' onclick=\"openTS('"+stationName+"')\" style='background:#0284c7;color:white;padding:4px 8px;border-radius:4px;text-decoration:none;font-size:11px;display:inline-block;'>View Time Series</a>"+
-                        "</div>";
-                    }
-
-                    hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
-                    hex.on('click', function(){ this.openPopup(); });
-                    hex.addTo(onlineLayer);
-                    hex.bringToFront();
-
-                    if(!row.count || map.getZoom() >= 5){
-                        var labelOffsetLat = lat + (radius/111111)*0.9;
-                        var labelOffsetLon = lon + (radius/(111111*Math.cos(lat*Math.PI/180)))*0.9;
-                        var labelName = row["NAMA UNIT"] || row["station"] || (row.stations && row.stations.length > 0 ? (row.stations.length > 1 ? row.stations[0].name + " (" + row.stations.length + ")" : row.stations[0].name) : "-");
-
-                        var label = L.marker([labelOffsetLat,labelOffsetLon],{
-                            icon: L.divIcon({
-                                className:'',
-                                html:'<div class="unit-label">'+labelName+'</div>',
-                                iconSize:null
-                            })
-                        });
-                        hex.stationLabel = label;
-                    }
+                var hex = createHex(lat, lon, radius, hexStyle.color, { 
+                    opacity: hexStyle.opacity, 
+                    stroke: hexStyle.stroke, 
+                    weight: hexStyle.stroke === "#ffffff" ? 2 : 3.5 
                 });
 
-                syncStationLabels();
-                renderSidebarStationList();
+                var popupContent = "";
+                if(row.count){
+                    var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'><b>Aggregated Stations ("+row.count+")</b><br><br>";
+                    row.stations.forEach(s=>{
+                        var k = normalizeName(s.name);
+                        var tss = window.latestTS[k];
+                        var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
+                        var timeText = tss ? tss.timeStr : "-";
+
+                        listHTML +=
+                        "<div style='border-bottom:1px solid #e2e8f0;padding:6px 0'>"+
+                        "<b>"+s.name+"</b><br>"+
+                        "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
+                        "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br>"+
+                        "<a href='#' onclick=\"openTS('"+s.name+"')\" style='color:#059669;font-weight:bold;'>View Time Series</a>"+
+                        "</div>";
+                    });
+                    listHTML += "</div>";
+                    popupContent = listHTML;
+                }else{
+                    var doseText = ts ? ts.dose.toFixed(2)+" nSv/h" : "No data";
+                    var timeText = ts ? ts.timeStr : "-";
+                    popupContent =
+                    "<div style='padding:10px;'>"+
+                    "<h4 style='font-weight:bold;color:#0f172a;margin-bottom:4px;'>"+stationName+"</h4>"+
+                    "Dose Rate: <span style='color:#0284c7;font-weight:bold'>"+doseText+"</span><br>"+
+                    "<span style='font-size:11px;color:#64748b'>Update: "+timeText+"</span><br><br>"+
+                    "<a href='#' onclick=\"openTS('"+stationName+"')\" style='background:#0284c7;color:white;padding:4px 8px;border-radius:4px;text-decoration:none;font-size:11px;display:inline-block;'>View Time Series</a>"+
+                    "</div>";
+                }
+
+                hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
+                hex.on('click', function(){ this.openPopup(); });
+                hex.addTo(onlineLayer);
+                hex.bringToFront();
+
+                if(!row.count || map.getZoom() >= 5){
+                    var labelOffsetLat = lat + (radius/111111)*0.9;
+                    var labelOffsetLon = lon + (radius/(111111*Math.cos(lat*Math.PI/180)))*0.9;
+                    var labelName = row["NAMA UNIT"] || row["station"] || (row.stations && row.stations.length > 0 ? (row.stations.length > 1 ? row.stations[0].name + " (" + row.stations.length + ")" : row.stations[0].name) : "-");
+
+                    var label = L.marker([labelOffsetLat,labelOffsetLon],{
+                        icon: L.divIcon({
+                            className:'',
+                            html:'<div class="unit-label">'+labelName+'</div>',
+                            iconSize:null
+                        })
+                    });
+                    hex.stationLabel = label;
+                }
             });
+
+            syncStationLabels();
+            renderSidebarStationList();
         }
 
         function renderSidebarStationList(){
@@ -1831,7 +1878,6 @@
             const headerSubtitle = document.getElementById('headerSubtitle');
         
             if (currentUser) {
-                // Username sengaja tidak ditampilkan sesuai instruksi
                 labelBtn.innerText = "Logout";
                 btnLogin.onclick = logoutCustomUser;
                 btnLogin.className = "px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
