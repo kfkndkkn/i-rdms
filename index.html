@@ -415,7 +415,6 @@
             return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
         }
 
-        // Daftar stasiun publik default
         const publicStations = new Set([
             'St.Klim. Manokwari', 'St.Geof.Kls.I Padang Panjang', 'St.Mteo.Kls.III Tarakan',
             'St.Mteo.Kls.I Pangkal Pinang', 'St.Mteo.Kls.III Putussibau', 'CTBT Kappang',
@@ -530,7 +529,6 @@
             }
         });
 
-        // Event listener zoomend agar pemecahan agregasi/stasiun langsung merespons saat peta dizoom
         map.on('zoomend', function(){
             renderMap();
         });
@@ -592,7 +590,6 @@
             return "#ff2b2b";
         }
 
-        // Helper menentukan border dan transparansi fill berdasarkan status stasiun
         function getHexStyle(stationRef, dose) {
             let statuses = [];
             if (Array.isArray(stationRef)) {
@@ -612,11 +609,11 @@
             let opacity = 0.85;
 
             if (statuses.includes('offline')) {
-                stroke = "#dc2626"; // Border Merah
-                opacity = 0.30;    // Lebih transparan
+                stroke = "#dc2626";
+                opacity = 0.30;
             } else if (statuses.includes('maintenance')) {
-                stroke = "#eab308"; // Border Kuning
-                opacity = 0.30;    // Lebih transparan
+                stroke = "#eab308";
+                opacity = 0.30;
             }
 
             return { color, stroke, opacity };
@@ -750,13 +747,13 @@
                 let usernameLower = (currentUser.username || "").toLowerCase();
 
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
-                    allowedStations = null; // Admin melihat seluruh stasiun
+                    allowedStations = null; 
                 } else {
-                    // Mengambil daftar stasiun secara dinamis dari tabel permissions Supabase berdasarkan username yang login
+                    // Menggunakan .ilike untuk mencocokkan username tanpa terhalang huruf besar/kecil
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
-                        .eq('username', currentUser.username);
+                        .ilike('username', currentUser.username);
                         
                     if (!permError && permData && permData.length > 0) {
                         allowedStations = new Set(permData.map(p => normalizeName(p.station_name)));
@@ -1086,7 +1083,6 @@
             }
         }
 
-        // Time Series Modal
         var tsChart = null;
         var allLabels = [], allValues = [], filteredLabels = [], filteredValues = [];
         var isFiltered = false;
@@ -1420,7 +1416,6 @@
             document.getElementById("tsModal").classList.add("hidden");
         }
 
-        // Statistic Summary Report
         async function openStatisticSummaryReport(){
             let data = window.allTimeseriesCache.length > 0 ? window.allTimeseriesCache : await fetchAllTimeseries();
 
