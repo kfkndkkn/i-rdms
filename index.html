@@ -415,17 +415,6 @@
             return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
         }
 
-        const publicStations = new Set([
-            'St.Klim. Manokwari', 'St.Geof.Kls.I Padang Panjang', 'St.Mteo.Kls.III Tarakan',
-            'St.Mteo.Kls.I Pangkal Pinang', 'St.Mteo.Kls.III Putussibau', 'CTBT Kappang',
-            'CTBT Jayapura', 'CTBT NTT', 'St.Geof.Kls.I Ambon', 'St.Klim.Kls.II Mempawah',
-            'St.Mteo.Kls.III Sintang', 'St.Mteo.Kls.I.Supadio.Pontianak', 'CTBT Sorong',
-            'St.Klim.Kls.II Malang', 'St.Mteo.Kls.III Kerinci', 'St.Mteo.Kls.III Tana Toraja',
-            'St.Mteo.Kls.III Tapanuli Tengah', 'St.Geof.Kls.III Banjarnegara', 'St.Mteo.Kls.III Bengkulu',
-            'St.Mteo.Kls.I Gorontalo', 'St.Mteo.Kls.III Tanjung Pinang', 'St.Mteo.Kls.III Cilacap',
-            'St.Mteo.Kls I Pekanbaru', 'St.Geof.Kls.I Tuntungan', 'CTBT Lembang'
-        ].map(s => normalizeName(s)));
-
         window.stationIndex = {};
         window.profileIndex = {};
         window.latestTS = {};
@@ -740,16 +729,17 @@
             let filterOnlyOnline = false;
 
             if (!currentUser) {
-                allowedStations = publicStations;
+                // Untuk publik, ambil stasiun yang statusnya online dari profiles_backend secara dinamis
                 filterOnlyOnline = true;
+                allowedStations = null; 
             } else {
                 let roleLower = (currentUser.role || "").toLowerCase();
                 let usernameLower = (currentUser.username || "").toLowerCase();
 
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
-                    allowedStations = null; 
+                    allowedStations = null; // Admin melihat seluruh stasiun
                 } else {
-                    // Menggunakan .ilike untuk mencocokkan username tanpa terhalang huruf besar/kecil
+                    // Mengambil daftar stasiun secara dinamis dari tabel permissions Supabase berdasarkan username yang login
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
@@ -764,26 +754,29 @@
             }
 
             loadLatestTimeseries(async ()=>{
-                let { data: rawData, error } = await supabaseClient.from('stations_all').select('*');
-                if(error){
-                    console.error("Error loading stations from Supabase:", error.message);
-                    return;
-                }
-
                 window.stationIndex = {};
 
-                (rawData || []).forEach(r=>{
-                    let name = r["NAMA UNIT"] || r["station"];
-                    var key = normalizeName(name);
-                    
+                // Menggunakan profiles_backend sebagai sumber utama stasiun agar seluruh stasiun (termasuk BRIN & Obvitnas) termuat
+                Object.keys(window.profileIndex).forEach(key => {
+                    const prof = window.profileIndex[key];
+                    const name = prof["station"] || prof["NAMA UNIT"] || key;
+                    const lat = parseFloat(prof["Latitude"] || prof["LATITUDE"]);
+                    const lon = parseFloat(prof["Longitude"] || prof["LONGITUDE"]);
+
+                    if (isNaN(lat) || isNaN(lon)) return;
+
                     if (allowedStations !== null && !allowedStations.has(key)) return;
 
                     if (filterOnlyOnline) {
-                        let profStatus = (window.profileIndex[key]?.Status || "").toString().trim().toLowerCase();
+                        let profStatus = (prof.Status || "").toString().trim().toLowerCase();
                         if (profStatus !== 'online') return;
                     }
 
-                    window.stationIndex[key] = r;
+                    window.stationIndex[key] = {
+                        "NAMA UNIT": name,
+                        "LATITUDE": lat,
+                        "LONGITUDE": lon
+                    };
                 });
 
                 renderMap();
