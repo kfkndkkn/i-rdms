@@ -415,6 +415,18 @@
             return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
         }
 
+        // Daftar stasiun publik default
+        const publicStations = new Set([
+            'St.Klim. Manokwari', 'St.Geof.Kls.I Padang Panjang', 'St.Mteo.Kls.III Tarakan',
+            'St.Mteo.Kls.I Pangkal Pinang', 'St.Mteo.Kls.III Putussibau', 'CTBT Kappang',
+            'CTBT Jayapura', 'CTBT NTT', 'St.Geof.Kls.I Ambon', 'St.Klim.Kls.II Mempawah',
+            'St.Mteo.Kls.III Sintang', 'St.Mteo.Kls.I.Supadio.Pontianak', 'CTBT Sorong',
+            'St.Klim.Kls.II Malang', 'St.Mteo.Kls.III Kerinci', 'St.Mteo.Kls.III Tana Toraja',
+            'St.Mteo.Kls.III Tapanuli Tengah', 'St.Geof.Kls.III Banjarnegara', 'St.Mteo.Kls.III Bengkulu',
+            'St.Mteo.Kls.I Gorontalo', 'St.Mteo.Kls.III Tanjung Pinang', 'St.Mteo.Kls.III Cilacap',
+            'St.Mteo.Kls I Pekanbaru', 'St.Geof.Kls.I Tuntungan', 'CTBT Lembang'
+        ].map(s => normalizeName(s)));
+
         window.stationIndex = {};
         window.profileIndex = {};
         window.latestTS = {};
@@ -729,9 +741,8 @@
             let filterOnlyOnline = false;
 
             if (!currentUser) {
-                // Untuk publik, ambil stasiun yang statusnya online dari profiles_backend secara dinamis
+                allowedStations = publicStations;
                 filterOnlyOnline = true;
-                allowedStations = null; 
             } else {
                 let roleLower = (currentUser.role || "").toLowerCase();
                 let usernameLower = (currentUser.username || "").toLowerCase();
@@ -739,7 +750,7 @@
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
                     allowedStations = null; // Admin melihat seluruh stasiun
                 } else {
-                    // Mengambil daftar stasiun secara dinamis dari tabel permissions Supabase berdasarkan username yang login
+                    // Mengambil daftar stasiun secara dinamis dari tabel permissions Supabase berdasarkan username yang login (tidak case-sensitive)
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
@@ -756,7 +767,7 @@
             loadLatestTimeseries(async ()=>{
                 window.stationIndex = {};
 
-                // Menggunakan profiles_backend sebagai sumber utama stasiun agar seluruh stasiun (termasuk BRIN & Obvitnas) termuat
+                // Menggunakan profiles_backend sebagai sumber stasiun agar stasiun operator (BRIN/Obvitnas) ikut termuat dengan koordinatnya
                 Object.keys(window.profileIndex).forEach(key => {
                     const prof = window.profileIndex[key];
                     const name = prof["station"] || prof["NAMA UNIT"] || key;
