@@ -411,7 +411,7 @@
             console.error("Gagal membaca data sesi dari localStorage:", e);
         }
 
-        // Fungsi normalisasi nama stasiun yang lebih toleran (menyatukan spasi & tanda hubung)
+        // Normalisasi nama stasiun yang fleksibel terhadap spasi & tanda hubung
         function normalizeName(name){
             return (name || "").toString().trim().toLowerCase().replace(/[\s\-]+/g," ");
         }
@@ -682,7 +682,7 @@
             return result;
         }
 
-        // OPTIMASI: Hanya memuat data timeseries 1 bulan terakhir agar cepat
+        // OPTIMASI: Memuat data timeseries 1 bulan terakhir
         async function fetchAllTimeseries() {
             let allData = [];
             let page = 0;
@@ -766,7 +766,7 @@
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
-                        .ilike('username', currentUser.username);
+                        .ilike('username', currentUser.username.trim());
                         
                     console.log("Hasil query user_station_permissions:", permData, "Error:", permError);
 
@@ -775,7 +775,7 @@
                         console.log("Stasiun yang diizinkan (Normalized):", Array.from(allowedStations));
                     } else {
                         allowedStations = new Set();
-                        console.warn("Tidak ada izin stasiun ditemukan untuk user ini!");
+                        console.warn("Tidak ada izin stasiun ditemukan untuk user:", currentUser.username);
                     }
                 }
             }
@@ -783,16 +783,18 @@
             loadLatestTimeseries(async ()=>{
                 window.stationIndex = {};
 
-                Object.keys(window.profileIndex).forEach(key => {
-                    const prof = window.profileIndex[key];
-                    const name = prof["station"] || prof["NAMA UNIT"] || key;
+                Object.keys(window.profileIndex).forEach(profKey => {
+                    const prof = window.profileIndex[profKey];
+                    const rawName = prof["station"] || prof["NAMA UNIT"] || profKey;
                     const lat = parseFloat(prof["Latitude"] || prof["LATITUDE"]);
                     const lon = parseFloat(prof["Longitude"] || prof["LONGITUDE"]);
 
                     if (isNaN(lat) || isNaN(lon)) return;
 
-                    let normKey = normalizeName(name);
-                    let isAllowed = allowedStations === null || allowedStations.has(normKey);
+                    let normName = normalizeName(rawName);
+                    let isAllowed = (allowedStations === null) || 
+                                    allowedStations.has(normName) || 
+                                    allowedStations.has(profKey);
 
                     if (!isAllowed) return;
 
@@ -801,8 +803,8 @@
                         if (profStatus !== 'online') return;
                     }
 
-                    window.stationIndex[key] = {
-                        "NAMA UNIT": name,
+                    window.stationIndex[profKey] = {
+                        "NAMA UNIT": rawName,
                         "LATITUDE": lat,
                         "LONGITUDE": lon
                     };
