@@ -154,7 +154,7 @@
             <button onclick="toggleSidebar()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2.5 rounded-lg transition-colors border border-slate-200" title="Toggle Sidebar">
                 <i class="fa-solid fa-bars text-lg text-amber-500"></i>
             </button>
-            <img src="logo/logo-bapeten.png" alt="Logo BAPETEN" class="h-9 w-auto">
+            <img src="logo/logo-bapeten.png" alt="Logo BAPETEN" class="h-9 w-auto" onerror="this.style.display='none'">
             <div>
                 <h1 class="font-bold text-sm sm:text-lg tracking-wide text-slate-900 leading-tight">Indonesia Radiation Data Monitoring System</h1>
                 <p id="headerSubtitle" class="text-[10px] text-slate-500 font-medium hidden sm:block">Direktorat Keteknikan dan Kesiapsiagaan Nuklir — BAPETEN</p>
@@ -402,12 +402,22 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZHBtd2lia2t6dm51aGxzemV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Mjc2NDgsImV4cCI6MjEwNzUwMzY0OH0.AMLnYZmWaoFGcNEK6j19-3cdJgCAJYh_W4dsGhc5gRg';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        let currentUser = null; 
+        // MEMBACA SESI LOGIN TERDAFTAR DI LOCALSTORAGE AGAR TIDAK LOGOUT SAAT REFRESH
+        let currentUser = null;
+        try {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+            }
+        } catch(e) {
+            console.error("Gagal membaca data sesi dari localStorage:", e);
+        }
 
         function normalizeName(name){
             return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
         }
 
+        // DAFTAR STASIUN PUBLIK (BELUM LOGIN)
         const publicStations = new Set([
             'St.Klim. Manokwari', 'St.Geof.Kls.I Padang Panjang', 'St.Mteo.Kls.III Tarakan',
             'St.Mteo.Kls.I Pangkal Pinang', 'St.Mteo.Kls.III Putussibau', 'CTBT Kappang',
@@ -417,6 +427,19 @@
             'St.Mteo.Kls.III Tapanuli Tengah', 'St.Geof.Kls.III Banjarnegara', 'St.Mteo.Kls.III Bengkulu',
             'St.Mteo.Kls.I Gorontalo', 'St.Mteo.Kls.III Tanjung Pinang', 'St.Mteo.Kls.III Cilacap',
             'St.Mteo.Kls I Pekanbaru', 'St.Geof.Kls.I Tuntungan', 'CTBT Lembang'
+        ].map(s => normalizeName(s)));
+
+        // DAFTAR STASIUN BRIN
+        const brinStations = new Set([
+            'KNS-2', 'KNY-1', 'KNB-1', 'KNS-1', 'KNS-3',
+            'Puspiptek-1', 'Puspiptek-2', 'BRIN KSE Achmad Baiquni Yogyakarta'
+        ].map(s => normalizeName(s)));
+
+        // DAFTAR STASIUN OBVITNAS
+        const obvitnasStations = new Set([
+            'Istana Kepresidenan Yogyakarta', 'Istana Kepresidenan Cipanas',
+            'Istana Kepresidenan Bogor', 'Istana Negara Merdeka (Wantimpres)',
+            'Istana Kepresidenan Bali', 'Istana Negara Merdeka (Setneg)'
         ].map(s => normalizeName(s)));
 
         window.stationIndex = {};
@@ -642,7 +665,6 @@
             return result;
         }
 
-        // FUNGSI MENGAMBIL SELURUH ROW TIMESERIES DENGAN PAGINATION / BATCHING
         async function fetchAllTimeseries() {
             let allData = [];
             let page = 0;
@@ -699,16 +721,26 @@
         async function loadCSV(){
             await loadProfile();
 
+            // KONDISI PENENTUAN PERIZINAN STASIUN
             let allowedStations = null;
+            let filterOnlyOnline = false;
+
             if (!currentUser) {
+                // BELUM LOGIN: Hanya yang terdaftar di publicStations DAN berstatus ONLINE
                 allowedStations = publicStations;
+                filterOnlyOnline = true;
             } else {
                 let roleLower = (currentUser.role || "").toLowerCase();
                 let usernameLower = (currentUser.username || "").toLowerCase();
 
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
                     allowedStations = null; // Admin melihat seluruh stasiun
+                } else if (usernameLower === 'operator_brin' || roleLower.includes('brin')) {
+                    allowedStations = brinStations;
+                } else if (usernameLower === 'operator_obvitnas' || roleLower.includes('obvitnas')) {
+                    allowedStations = obvitnasStations;
                 } else {
+                    // Cari konfigurasi hak akses stasiun dari Supabase
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
@@ -742,7 +774,14 @@
                     let name = r["NAMA UNIT"] || r["station"];
                     var key = normalizeName(name);
                     
+                    // Filter berdasarkan stasiun terdaftar
                     if (allowedStations !== null && !allowedStations.has(key)) return;
+
+                    // Filter kondisi Belum Login: Harus berstatus Online di profiles_backend
+                    if (filterOnlyOnline) {
+                        let profStatus = (window.profileIndex[key]?.Status || "").toString().trim().toLowerCase();
+                        if (profStatus !== 'online') return;
+                    }
 
                     window.stationIndex[key] = r;
                 });
@@ -1079,7 +1118,6 @@
                 "<b>Longitude:</b> "+(profileData?.Longitude || "-")+"<br>"+
                 "<b>Status:</b> "+statusText;
 
-            // Tarik data spesifik stasiun dengan pagination per 1000 row
             let allStationData = [];
             let page = 0;
             const pageSize = 1000;
@@ -1734,7 +1772,7 @@
             document.getElementById("tickerText").innerHTML = msg;
         }
 
-        // FUNGSI AUTHENTICATION
+        // FUNGSI AUTHENTICATION & MANAJEMEN SESI LOCALSTORAGE
         function openLoginModal() {
             document.getElementById('modal-username').value = '';
             document.getElementById('modal-password').value = '';
@@ -1783,6 +1821,8 @@
                 showModalAlert('Login Gagal: Username atau password salah.', 'error');
             } else {
                 currentUser = data; 
+                // Simpan ke localStorage agar tidak ter-logout saat refresh
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
                 updateAuthUI();
                 closeLoginModal();
                 loadCSV();
@@ -1792,6 +1832,8 @@
 
         function logoutCustomUser() {
             currentUser = null;
+            // Hapus data pengguna dari localStorage
+            localStorage.removeItem('currentUser');
             updateAuthUI();
             loadCSV();
             updateSidePanel();
