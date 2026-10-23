@@ -402,7 +402,6 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZHBtd2lia2t6dm51aGxzemV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5Mjc2NDgsImV4cCI6MjEwNzUwMzY0OH0.AMLnYZmWaoFGcNEK6j19-3cdJgCAJYh_W4dsGhc5gRg';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // MEMBACA SESI LOGIN TERDAFTAR DI LOCALSTORAGE AGAR TIDAK LOGOUT SAAT REFRESH
         let currentUser = null;
         try {
             const savedUser = localStorage.getItem('currentUser');
@@ -417,7 +416,6 @@
             return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
         }
 
-        // DAFTAR STASIUN PUBLIK (BELUM LOGIN)
         const publicStations = new Set([
             'St.Klim. Manokwari', 'St.Geof.Kls.I Padang Panjang', 'St.Mteo.Kls.III Tarakan',
             'St.Mteo.Kls.I Pangkal Pinang', 'St.Mteo.Kls.III Putussibau', 'CTBT Kappang',
@@ -429,13 +427,11 @@
             'St.Mteo.Kls I Pekanbaru', 'St.Geof.Kls.I Tuntungan', 'CTBT Lembang'
         ].map(s => normalizeName(s)));
 
-        // DAFTAR STASIUN BRIN
         const brinStations = new Set([
             'KNS-2', 'KNY-1', 'KNB-1', 'KNS-1', 'KNS-3',
             'Puspiptek-1', 'Puspiptek-2', 'BRIN KSE Achmad Baiquni Yogyakarta'
         ].map(s => normalizeName(s)));
 
-        // DAFTAR STASIUN OBVITNAS
         const obvitnasStations = new Set([
             'Istana Kepresidenan Yogyakarta', 'Istana Kepresidenan Cipanas',
             'Istana Kepresidenan Bogor', 'Istana Negara Merdeka (Wantimpres)',
@@ -481,7 +477,6 @@
             });
         }
 
-        // Base layers
         var esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
         var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
         var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
@@ -504,7 +499,6 @@
         var indonesiaBounds = [[-11,94],[6,141]];
         map.fitBounds(indonesiaBounds);
 
-        // North Arrow Control
         const northArrowControl = L.control({ position: 'topright' });
         northArrowControl.onAdd = function() {
             const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control north-compass-box');
@@ -721,12 +715,10 @@
         async function loadCSV(){
             await loadProfile();
 
-            // KONDISI PENENTUAN PERIZINAN STASIUN
             let allowedStations = null;
             let filterOnlyOnline = false;
 
             if (!currentUser) {
-                // BELUM LOGIN: Hanya yang terdaftar di publicStations DAN berstatus ONLINE
                 allowedStations = publicStations;
                 filterOnlyOnline = true;
             } else {
@@ -734,13 +726,12 @@
                 let usernameLower = (currentUser.username || "").toLowerCase();
 
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
-                    allowedStations = null; // Admin melihat seluruh stasiun
+                    allowedStations = null; 
                 } else if (usernameLower === 'operator_brin' || roleLower.includes('brin')) {
                     allowedStations = brinStations;
                 } else if (usernameLower === 'operator_obvitnas' || roleLower.includes('obvitnas')) {
                     allowedStations = obvitnasStations;
                 } else {
-                    // Cari konfigurasi hak akses stasiun dari Supabase
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
@@ -774,10 +765,8 @@
                     let name = r["NAMA UNIT"] || r["station"];
                     var key = normalizeName(name);
                     
-                    // Filter berdasarkan stasiun terdaftar
                     if (allowedStations !== null && !allowedStations.has(key)) return;
 
-                    // Filter kondisi Belum Login: Harus berstatus Online di profiles_backend
                     if (filterOnlyOnline) {
                         let profStatus = (window.profileIndex[key]?.Status || "").toString().trim().toLowerCase();
                         if (profStatus !== 'online') return;
@@ -1602,7 +1591,6 @@
             w.document.close();
         }
 
-        // Status Donut Modal
         let statusChart = null;
 
         function openStatusDonut(){
@@ -1689,7 +1677,6 @@
             window.requestAnimationFrame(animateMapResize);
         }
 
-        // IAEA Legend
         var legend = L.control({position:"bottomleft"});
         legend.onAdd = function(){
             var div = L.DomUtil.create("div","legend");
@@ -1772,7 +1759,6 @@
             document.getElementById("tickerText").innerHTML = msg;
         }
 
-        // FUNGSI AUTHENTICATION & MANAJEMEN SESI LOCALSTORAGE
         function openLoginModal() {
             document.getElementById('modal-username').value = '';
             document.getElementById('modal-password').value = '';
@@ -1821,7 +1807,6 @@
                 showModalAlert('Login Gagal: Username atau password salah.', 'error');
             } else {
                 currentUser = data; 
-                // Simpan ke localStorage agar tidak ter-logout saat refresh
                 localStorage.setItem('currentUser', JSON.stringify(currentUser));
                 updateAuthUI();
                 closeLoginModal();
@@ -1832,7 +1817,6 @@
 
         function logoutCustomUser() {
             currentUser = null;
-            // Hapus data pengguna dari localStorage
             localStorage.removeItem('currentUser');
             updateAuthUI();
             loadCSV();
@@ -1847,7 +1831,8 @@
             const headerSubtitle = document.getElementById('headerSubtitle');
         
             if (currentUser) {
-                labelBtn.innerText = "Logout (" + currentUser.username + ")";
+                // Username sengaja tidak ditampilkan sesuai instruksi
+                labelBtn.innerText = "Logout";
                 btnLogin.onclick = logoutCustomUser;
                 btnLogin.className = "px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
                 
