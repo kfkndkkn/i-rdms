@@ -422,6 +422,7 @@
         window.stationIndex = {};
         window.profileIndex = {};
         window.latestTS = {};
+        window.allTimeseriesCache = [];
         window.lastChartData = "";
 
         const zoomOffsets = {
@@ -641,15 +642,41 @@
             return result;
         }
 
-        window.latestTS = {};
+        // FUNGSI MENGAMBIL SELURUH ROW TIMESERIES DENGAN PAGINATION / BATCHING
+        async function fetchAllTimeseries() {
+            let allData = [];
+            let page = 0;
+            const pageSize = 1000;
+            let hasMore = true;
+
+            while (hasMore) {
+                let { data, error } = await supabaseClient
+                    .from('timeseries_all')
+                    .select('*')
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                if (error) {
+                    console.error("Error fetching timeseries batch:", error.message);
+                    break;
+                }
+
+                if (data && data.length > 0) {
+                    allData = allData.concat(data);
+                    if (data.length < pageSize) {
+                        hasMore = false;
+                    } else {
+                        page++;
+                    }
+                } else {
+                    hasMore = false;
+                }
+            }
+            window.allTimeseriesCache = allData;
+            return allData;
+        }
 
         async function loadLatestTimeseries(callback){
-            let { data, error } = await supabaseClient.from('timeseries_all').select('*');
-            if(error){
-                console.error("Error loading timeseries from Supabase:", error.message);
-                if(callback) callback();
-                return;
-            }
+            let data = await fetchAllTimeseries();
             var latest = {};
             (data || []).forEach(r=>{
                 var key = normalizeName(r.station);
@@ -672,7 +699,6 @@
         async function loadCSV(){
             await loadProfile();
 
-            // Tentukan stasiun yang diizinkan berdasarkan user yang login / publik
             let allowedStations = null;
             if (!currentUser) {
                 allowedStations = publicStations;
@@ -928,8 +954,7 @@
         }
 
         async function drawAvgChart(){
-            let { data, error } = await supabaseClient.from('timeseries_all').select('*');
-            if(error) return;
+            let data = window.allTimeseriesCache.length > 0 ? window.allTimeseriesCache : await fetchAllTimeseries();
 
             var grouped = {};
             const activeStations = new Set(Object.keys(window.stationIndex));
@@ -1054,13 +1079,35 @@
                 "<b>Longitude:</b> "+(profileData?.Longitude || "-")+"<br>"+
                 "<b>Status:</b> "+statusText;
 
-            let { data, error } = await supabaseClient.from('timeseries_all').select('*').eq('station', station);
-            if(error) {
-                console.error("Error fetching timeseries for station:", error);
-                return;
+            // Tarik data spesifik stasiun dengan pagination per 1000 row
+            let allStationData = [];
+            let page = 0;
+            const pageSize = 1000;
+            let hasMore = true;
+
+            while (hasMore) {
+                let { data, error } = await supabaseClient
+                    .from('timeseries_all')
+                    .select('*')
+                    .eq('station', station)
+                    .order('time', { ascending: true })
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                if (error) {
+                    console.error("Error fetching timeseries for station:", error);
+                    break;
+                }
+
+                if (data && data.length > 0) {
+                    allStationData = allStationData.concat(data);
+                    if (data.length < pageSize) hasMore = false;
+                    else page++;
+                } else {
+                    hasMore = false;
+                }
             }
 
-            currentStationRawData = (data || []).filter(r=>{
+            currentStationRawData = allStationData.filter(r=>{
                 var v = parseFloat(r.dose);
                 return !isNaN(v);
             });
@@ -1317,8 +1364,7 @@
 
         // Statistic Summary Report
         async function openStatisticSummaryReport(){
-            let { data, error } = await supabaseClient.from('timeseries_all').select('*');
-            if(error) return;
+            let data = window.allTimeseriesCache.length > 0 ? window.allTimeseriesCache : await fetchAllTimeseries();
 
             const rawData = data || [];
             let allTimes = rawData.map(r => r.time).filter(Boolean).sort();
