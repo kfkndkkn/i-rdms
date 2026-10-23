@@ -417,6 +417,17 @@
             return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
         }
 
+        const publicStations = new Set([
+            'St.Klim. Manokwari', 'St.Geof.Kls.I Padang Panjang', 'St.Mteo.Kls.III Tarakan',
+            'St.Mteo.Kls.I Pangkal Pinang', 'St.Mteo.Kls.III Putussibau', 'CTBT Kappang',
+            'CTBT Jayapura', 'CTBT NTT', 'St.Geof.Kls.I Ambon', 'St.Klim.Kls.II Mempawah',
+            'St.Mteo.Kls.III Sintang', 'St.Mteo.Kls.I.Supadio.Pontianak', 'CTBT Sorong',
+            'St.Klim.Kls.II Malang', 'St.Mteo.Kls.III Kerinci', 'St.Mteo.Kls.III Tana Toraja',
+            'St.Mteo.Kls.III Tapanuli Tengah', 'St.Geof.Kls.III Banjarnegara', 'St.Mteo.Kls.III Bengkulu',
+            'St.Mteo.Kls.I Gorontalo', 'St.Mteo.Kls.III Tanjung Pinang', 'St.Mteo.Kls.III Cilacap',
+            'St.Mteo.Kls I Pekanbaru', 'St.Geof.Kls.I Tuntungan', 'CTBT Lembang'
+        ].map(s => normalizeName(s)));
+
         window.stationIndex = {};
         window.profileIndex = {};
         window.latestTS = {};
@@ -669,8 +680,23 @@
         }
 
         async function loadCSV(){
-            // Pastikan profil selesai dimuat terlebih dahulu sebelum memproses stasiun
             await loadProfile();
+
+            // Tentukan stasiun yang diizinkan berdasarkan user yang login / publik
+            let allowedStations = null;
+            if (!currentUser) {
+                allowedStations = publicStations;
+            } else if (currentUser.role !== 'Admin' && (!currentUser.username || !currentUser.username.includes('kfkndkkn'))) {
+                let { data: permData, error: permError } = await supabaseClient
+                    .from('user_station_permissions')
+                    .select('station_name')
+                    .eq('username', currentUser.username);
+                if (!permError && permData) {
+                    allowedStations = new Set(permData.map(p => normalizeName(p.station_name)));
+                } else {
+                    allowedStations = new Set();
+                }
+            }
 
             loadLatestTimeseries(async ()=>{
                 let { data: rawData, error } = await supabaseClient.from('stations_all').select('*');
@@ -692,12 +718,7 @@
                     let name = r["NAMA UNIT"] || r["station"];
                     var key = normalizeName(name);
                     
-                    // Filter role khusus
-                    if(currentUser && currentUser.role){
-                        let roleLower = currentUser.role.toLowerCase();
-                        if(roleLower.includes('brin') && !name.toLowerCase().includes('brin')) return;
-                        if(roleLower.includes('obvitnas') && !name.toLowerCase().includes('obvitnas')) return;
-                    }
+                    if (allowedStations !== null && !allowedStations.has(key)) return;
 
                     window.stationIndex[key] = r;
                 });
