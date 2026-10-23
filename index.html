@@ -415,6 +415,7 @@
             return (name || "").toString().trim().toLowerCase().replace(/\s+/g," ");
         }
 
+        // Daftar stasiun publik default
         const publicStations = new Set([
             'St.Klim. Manokwari', 'St.Geof.Kls.I Padang Panjang', 'St.Mteo.Kls.III Tarakan',
             'St.Mteo.Kls.I Pangkal Pinang', 'St.Mteo.Kls.III Putussibau', 'CTBT Kappang',
@@ -424,17 +425,6 @@
             'St.Mteo.Kls.III Tapanuli Tengah', 'St.Geof.Kls.III Banjarnegara', 'St.Mteo.Kls.III Bengkulu',
             'St.Mteo.Kls.I Gorontalo', 'St.Mteo.Kls.III Tanjung Pinang', 'St.Mteo.Kls.III Cilacap',
             'St.Mteo.Kls I Pekanbaru', 'St.Geof.Kls.I Tuntungan', 'CTBT Lembang'
-        ].map(s => normalizeName(s)));
-
-        const brinStations = new Set([
-            'KNS-2', 'KNY-1', 'KNB-1', 'KNS-1', 'KNS-3',
-            'Puspiptek-1', 'Puspiptek-2', 'BRIN KSE Achmad Baiquni Yogyakarta'
-        ].map(s => normalizeName(s)));
-
-        const obvitnasStations = new Set([
-            'Istana Kepresidenan Yogyakarta', 'Istana Kepresidenan Cipanas',
-            'Istana Kepresidenan Bogor', 'Istana Negara Merdeka (Wantimpres)',
-            'Istana Kepresidenan Bali', 'Istana Negara Merdeka (Setneg)'
         ].map(s => normalizeName(s)));
 
         window.stationIndex = {};
@@ -621,7 +611,6 @@
             let stroke = "#ffffff";
             let opacity = 0.85;
 
-            // Jika ada stasiun yang offline atau maintenance dalam klaster/stasiun tersebut
             if (statuses.includes('offline')) {
                 stroke = "#dc2626"; // Border Merah
                 opacity = 0.30;    // Lebih transparan
@@ -761,12 +750,9 @@
                 let usernameLower = (currentUser.username || "").toLowerCase();
 
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
-                    allowedStations = null; 
-                } else if (usernameLower === 'operator_brin' || roleLower.includes('brin')) {
-                    allowedStations = brinStations;
-                } else if (usernameLower === 'operator_obvitnas' || roleLower.includes('obvitnas')) {
-                    allowedStations = obvitnasStations;
+                    allowedStations = null; // Admin melihat seluruh stasiun
                 } else {
+                    // Mengambil daftar stasiun secara dinamis dari tabel permissions Supabase berdasarkan username yang login
                     let { data: permData, error: permError } = await supabaseClient
                         .from('user_station_permissions')
                         .select('station_name')
@@ -807,7 +793,6 @@
             });
         }
 
-        // Fungsi render peta yang dipanggil saat load dan setiap kali terjadi zoomend
         function renderMap() {
             polygonLayer.clearLayers();
             labelLayer.clearLayers();
@@ -866,7 +851,6 @@
 
                 if(isNaN(lat)||isNaN(lon)) return;
 
-                // Terapkan styling hexagon berdasarkan status (offline / maintenance / online)
                 let stationRef = row.count ? row.stations : stationName;
                 let hexStyle = getHexStyle(stationRef, dose);
 
