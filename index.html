@@ -147,6 +147,16 @@
 </head>
 <body class="bg-slate-100 flex flex-col h-full w-full overflow-hidden text-slate-800">
 
+    <!-- Loading Overlay Screen -->
+    <div id="loading-overlay" class="fixed inset-0 z-[9999999] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="relative flex items-center justify-center mb-4">
+            <div class="w-16 h-16 border-4 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+            <i class="fa-solid fa-radiation text-amber-400 text-xl absolute"></i>
+        </div>
+        <div class="text-white font-bold text-sm sm:text-base tracking-wider text-center">Memuat Data Radiasi...</div>
+        <div id="loading-status-text" class="text-xs text-slate-400 font-medium mt-1 text-center">Menghubungkan ke Supabase...</div>
+    </div>
+
     <!-- Header Navigation -->
     <header class="h-16 bg-white border-b border-slate-200 text-slate-800 flex items-center justify-between px-4 z-[9999] shadow-sm flex-shrink-0">
         <div class="flex items-center gap-3">
@@ -438,6 +448,26 @@
             }
         } catch(e) {
             console.error("Gagal membaca data sesi dari localStorage:", e);
+        }
+
+        function showLoadingOverlay(message) {
+            const overlay = document.getElementById("loading-overlay");
+            const statusText = document.getElementById("loading-status-text");
+            if (statusText && message) statusText.innerText = message;
+            if (overlay) {
+                overlay.style.opacity = '1';
+                overlay.classList.remove("hidden");
+            }
+        }
+
+        function hideLoadingOverlay() {
+            const overlay = document.getElementById("loading-overlay");
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.classList.add("hidden");
+                }, 500);
+            }
         }
 
         // Normalisasi nama stasiun yang fleksibel terhadap spasi & tanda hubung
@@ -766,6 +796,7 @@
         }
 
         async function loadCSV(){
+            showLoadingOverlay("Memuat profil dan otorisasi stasiun...");
             await loadProfile();
 
             let allowedStations = null;
@@ -798,6 +829,7 @@
                 }
             }
 
+            showLoadingOverlay("Mengunduh data pengukuran radiasi stasiun...");
             loadLatestTimeseries(async ()=>{
                 window.stationIndex = {};
 
@@ -829,6 +861,7 @@
                 });
 
                 renderMap();
+                hideLoadingOverlay();
             });
         }
 
@@ -1908,6 +1941,7 @@
                 localStorage.setItem('currentUser', JSON.stringify(currentUser));
                 updateAuthUI();
                 closeLoginModal();
+                showLoadingOverlay("Menyesuaikan stasiun sesuai hak akses pengguna...");
                 loadCSV();
                 updateSidePanel();
             }
@@ -1918,6 +1952,7 @@
             localStorage.removeItem('currentUser');
             updateAuthUI();
             closeLoginModal();
+            showLoadingOverlay("Memuat ulang mode stasiun publik...");
             loadCSV();
             updateSidePanel();
         }
@@ -1931,10 +1966,11 @@
             const headerSubtitle = document.getElementById('headerSubtitle');
         
             if (currentUser) {
-                labelBtn.innerText = "Logged In";
-                if(iconBtn) iconBtn.className = "fa-solid fa-circle-check text-emerald-300";
+                const uName = currentUser.username || "User";
+                labelBtn.innerText = `Logout (${uName})`;
+                if(iconBtn) iconBtn.className = "fa-solid fa-right-from-bracket text-red-300";
                 btnLogin.onclick = openLoginModal;
-                btnLogin.className = "px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
+                btnLogin.className = "px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs flex items-center space-x-2 shadow-sm transition ml-1";
                 
                 let roleLower = (currentUser.role || "").toLowerCase();
                 if (roleLower === 'admin' || (currentUser.username && currentUser.username.toLowerCase().includes('kfkndkkn'))) {
@@ -1967,6 +2003,7 @@
         }, 30000);
 
         window.onload = function(){
+            showLoadingOverlay("Memuat Sistem Pemantauan I-RDMS...");
             updateAuthUI();
             loadCSV();
             updateSidePanel();
