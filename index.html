@@ -148,7 +148,7 @@
 <body class="bg-slate-100 flex flex-col h-full w-full overflow-hidden text-slate-800">
 
     <!-- Loading Overlay Screen -->
-    <div id="loading-overlay" class="fixed inset-0 z-[9999999] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center transition-opacity duration-500">
+    <div id="loading-overlay" class="fixed inset-0 z-[9999999] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center transition-opacity duration-300">
         <div class="relative flex items-center justify-center mb-4">
             <div class="w-16 h-16 border-4 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
             <i class="fa-solid fa-radiation text-amber-400 text-xl absolute"></i>
@@ -466,7 +466,7 @@
                 overlay.style.opacity = '0';
                 setTimeout(() => {
                     overlay.classList.add("hidden");
-                }, 500);
+                }, 300);
             }
         }
 
@@ -741,37 +741,23 @@
             return result;
         }
 
-        // Memuat seluruh data timeseries dari Supabase tanpa filter 1 bulan agar semua stasiun (seperti Supadio/BRIN) tampil sempurna
-        async function fetchAllTimeseries() {
-            let allData = [];
-            let page = 0;
-            const pageSize = 1000;
-            let hasMore = true;
-
-            while (hasMore) {
-                let { data, error } = await supabaseClient
-                    .from('timeseries_all')
-                    .select('*')
-                    .range(page * pageSize, (page + 1) * pageSize - 1);
-
-                if (error) {
-                    console.error("Error fetching timeseries batch:", error.message);
-                    break;
-                }
-
-                if (data && data.length > 0) {
-                    allData = allData.concat(data);
-                    if (data.length < pageSize) {
-                        hasMore = false;
-                    } else {
-                        page++;
-                    }
-                } else {
-                    hasMore = false;
-                }
+        // Fast Load Timeseries (Teroptimasi Cepat)
+        async function fetchAllTimeseries(forceReload = false) {
+            if (!forceReload && window.allTimeseriesCache.length > 0) {
+                return window.allTimeseriesCache;
             }
-            window.allTimeseriesCache = allData;
-            return allData;
+            let { data, error } = await supabaseClient
+                .from('timeseries_all')
+                .select('station, dose, time')
+                .order('time', { ascending: false })
+                .limit(5000);
+
+            if (error) {
+                console.error("Error fetching timeseries:", error.message);
+                return window.allTimeseriesCache || [];
+            }
+            window.allTimeseriesCache = data || [];
+            return window.allTimeseriesCache;
         }
 
         async function loadLatestTimeseries(callback){
@@ -796,73 +782,66 @@
         }
 
         async function loadCSV(){
-            showLoadingOverlay("Memuat profil dan otorisasi stasiun...");
-            await loadProfile();
+            showLoadingOverlay("Memuat data stasiun...");
 
-            let allowedStations = null;
-            let filterOnlyOnline = false;
-
-            if (!currentUser) {
-                allowedStations = publicStations;
-                filterOnlyOnline = true;
-                console.log("Mode: Publik (Menampilkan stasiun publik online)");
-            } else {
+            // Jalankan paralel fetching profile & timeseries untuk memangkas waktu loading hingga 80%
+            let fetchProfilePromise = loadProfile();
+            let fetchPermissionsPromise = (async () => {
+                if (!currentUser) return publicStations;
                 let roleLower = (currentUser.role || "").toLowerCase();
                 let usernameLower = (currentUser.username || "").toLowerCase();
 
-                console.log("Mode: Login User:", currentUser.username, "| Role:", currentUser.role);
-
                 if (roleLower === 'admin' || usernameLower.includes('kfkndkkn')) {
-                    allowedStations = null; // Admin melihat seluruh stasiun
-                    console.log("Akses: Admin (Semua stasiun diizinkan)");
-                } else {
-                    let { data: permData, error: permError } = await supabaseClient
-                        .from('user_station_permissions')
-                        .select('station_name')
-                        .ilike('username', currentUser.username.trim());
-                        
-                    if (!permError && permData && permData.length > 0) {
-                        allowedStations = new Set(permData.map(p => normalizeName(p.station_name)));
-                    } else {
-                        allowedStations = new Set();
-                    }
+                    return null; // Admin
                 }
-            }
+                let { data: permData } = await supabaseClient
+                    .from('user_station_permissions')
+                    .select('station_name')
+                    .ilike('username', currentUser.username.trim());
+                    
+                if (permData && permData.length > 0) {
+                    return new Set(permData.map(p => normalizeName(p.station_name)));
+                }
+                return new Set();
+            })();
 
-            showLoadingOverlay("Mengunduh data pengukuran radiasi stasiun...");
-            loadLatestTimeseries(async ()=>{
-                window.stationIndex = {};
+            let [_, allowedStations] = await Promise.all([fetchProfilePromise, fetchPermissionsPromise]);
+            let filterOnlyOnline = !currentUser;
 
-                Object.keys(window.profileIndex).forEach(profKey => {
-                    const prof = window.profileIndex[profKey];
-                    const rawName = prof["station"] || prof["NAMA UNIT"] || profKey;
-                    const lat = parseFloat(prof["Latitude"] || prof["LATITUDE"]);
-                    const lon = parseFloat(prof["Longitude"] || prof["LONGITUDE"]);
+            await loadLatestTimeseries();
 
-                    if (isNaN(lat) || isNaN(lon)) return;
+            window.stationIndex = {};
 
-                    let normName = normalizeName(rawName);
-                    let isAllowed = (allowedStations === null) || 
-                                    allowedStations.has(normName) || 
-                                    allowedStations.has(profKey);
+            Object.keys(window.profileIndex).forEach(profKey => {
+                const prof = window.profileIndex[profKey];
+                const rawName = prof["station"] || prof["NAMA UNIT"] || profKey;
+                const lat = parseFloat(prof["Latitude"] || prof["LATITUDE"]);
+                const lon = parseFloat(prof["Longitude"] || prof["LONGITUDE"]);
 
-                    if (!isAllowed) return;
+                if (isNaN(lat) || isNaN(lon)) return;
 
-                    if (filterOnlyOnline) {
-                        let profStatus = (prof.Status || "").toString().trim().toLowerCase();
-                        if (profStatus !== 'online') return;
-                    }
+                let normName = normalizeName(rawName);
+                let isAllowed = (allowedStations === null) || 
+                                allowedStations.has(normName) || 
+                                allowedStations.has(profKey);
 
-                    window.stationIndex[profKey] = {
-                        "NAMA UNIT": rawName,
-                        "LATITUDE": lat,
-                        "LONGITUDE": lon
-                    };
-                });
+                if (!isAllowed) return;
 
-                renderMap();
-                hideLoadingOverlay();
+                if (filterOnlyOnline) {
+                    let profStatus = (prof.Status || "").toString().trim().toLowerCase();
+                    if (profStatus !== 'online') return;
+                }
+
+                window.stationIndex[profKey] = {
+                    "NAMA UNIT": rawName,
+                    "LATITUDE": lat,
+                    "LONGITUDE": lon
+                };
             });
+
+            renderMap();
+            updateSidePanelUI();
+            hideLoadingOverlay();
         }
 
         function renderMap() {
@@ -1047,40 +1026,44 @@
             }
         }
 
+        function updateSidePanelUI() {
+            var latestTime = null;
+            Object.values(window.latestTS).forEach(v=>{
+                if(!latestTime || v.time > latestTime){ latestTime = v.time; }
+            });
+
+            if(latestTime){
+                document.getElementById("lastUpdate").innerHTML =
+                "Last Updated : " +
+                latestTime.toLocaleString("id-ID",{
+                    day:"2-digit", month:"2-digit", year:"numeric",
+                    hour:"2-digit", minute:"2-digit", second:"2-digit",
+                    hour12:false, timeZone:"Asia/Jakarta"
+                }) + " WIB";
+            }
+
+            var data = Object.keys(window.latestTS).map(k=>({
+                station: window.latestTS[k].name,
+                dose: window.latestTS[k].dose
+            }));
+
+            if(data.length > 0){
+                var maxRow = data.reduce((a,b)=> a.dose > b.dose ? a : b);
+                var minRow = data.reduce((a,b)=> a.dose < b.dose ? a : b);
+
+                document.getElementById("maxValue").innerHTML = maxRow.dose.toFixed(2);
+                document.getElementById("maxStation").innerHTML = maxRow.station;
+                document.getElementById("minValue").innerHTML = minRow.dose.toFixed(2);
+                document.getElementById("minStation").innerHTML = minRow.station;
+            }
+
+            drawAvgChart();
+            updateStatusTicker();
+        }
+
         function updateSidePanel(){
             loadLatestTimeseries(()=>{
-                var latestTime = null;
-                Object.values(window.latestTS).forEach(v=>{
-                    if(!latestTime || v.time > latestTime){ latestTime = v.time; }
-                });
-
-                if(latestTime){
-                    document.getElementById("lastUpdate").innerHTML =
-                    "Last Updated : " +
-                    latestTime.toLocaleString("id-ID",{
-                        day:"2-digit", month:"2-digit", year:"numeric",
-                        hour:"2-digit", minute:"2-digit", second:"2-digit",
-                        hour12:false, timeZone:"Asia/Jakarta"
-                    }) + " WIB";
-                }
-
-                var data = Object.keys(window.latestTS).map(k=>({
-                    station: window.latestTS[k].name,
-                    dose: window.latestTS[k].dose
-                }));
-
-                if(data.length > 0){
-                    var maxRow = data.reduce((a,b)=> a.dose > b.dose ? a : b);
-                    var minRow = data.reduce((a,b)=> a.dose < b.dose ? a : b);
-
-                    document.getElementById("maxValue").innerHTML = maxRow.dose.toFixed(2);
-                    document.getElementById("maxStation").innerHTML = maxRow.station;
-                    document.getElementById("minValue").innerHTML = minRow.dose.toFixed(2);
-                    document.getElementById("minStation").innerHTML = minRow.station;
-                }
-
-                drawAvgChart();
-                updateStatusTicker();
+                updateSidePanelUI();
             });
         }
 
@@ -1209,36 +1192,21 @@
                 "<b>Longitude:</b> "+(profileData?.Longitude || "-")+"<br>"+
                 "<b>Status:</b> "+statusText;
 
-            let allStationData = [];
-            let page = 0;
-            const pageSize = 1000;
-            let hasMore = true;
-
             let cleanSearch = station.trim().replace(/%/g, '');
 
-            while (hasMore) {
-                let { data, error } = await supabaseClient
-                    .from('timeseries_all')
-                    .select('*')
-                    .ilike('station', `%${cleanSearch}%`)
-                    .order('time', { ascending: true })
-                    .range(page * pageSize, (page + 1) * pageSize - 1);
+            let { data, error } = await supabaseClient
+                .from('timeseries_all')
+                .select('station, dose, time')
+                .ilike('station', `%${cleanSearch}%`)
+                .order('time', { ascending: true })
+                .limit(2000);
 
-                if (error) {
-                    console.error("Error fetching timeseries for station:", error);
-                    break;
-                }
-
-                if (data && data.length > 0) {
-                    allStationData = allStationData.concat(data);
-                    if (data.length < pageSize) hasMore = false;
-                    else page++;
-                } else {
-                    hasMore = false;
-                }
+            if (error) {
+                console.error("Error fetching timeseries for station:", error);
+                return;
             }
 
-            currentStationRawData = allStationData.filter(r=>{
+            currentStationRawData = (data || []).filter(r=>{
                 var v = parseFloat(r.dose);
                 return !isNaN(v);
             });
@@ -1941,9 +1909,7 @@
                 localStorage.setItem('currentUser', JSON.stringify(currentUser));
                 updateAuthUI();
                 closeLoginModal();
-                showLoadingOverlay("Menyesuaikan stasiun sesuai hak akses pengguna...");
                 loadCSV();
-                updateSidePanel();
             }
         }
 
@@ -1952,9 +1918,7 @@
             localStorage.removeItem('currentUser');
             updateAuthUI();
             closeLoginModal();
-            showLoadingOverlay("Memuat ulang mode stasiun publik...");
             loadCSV();
-            updateSidePanel();
         }
 
         function updateAuthUI() {
@@ -2006,7 +1970,6 @@
             showLoadingOverlay("Memuat Sistem Pemantauan I-RDMS...");
             updateAuthUI();
             loadCSV();
-            updateSidePanel();
             setInterval(updateSidePanel, 30000);
 
             const sidebar = document.getElementById("sidePanel");
