@@ -470,9 +470,9 @@
             }
         }
 
-        // Normalisasi nama stasiun yang fleksibel terhadap spasi & tanda hubung
+        // Normalisasi nama stasiun yang fleksibel terhadap spasi, titik & tanda hubung untuk mengatasi variasi nama Supadio/BRIN
         function normalizeName(name){
-            return (name || "").toString().trim().toLowerCase().replace(/[\s\-]+/g," ");
+            return (name || "").toString().trim().toLowerCase().replace(/[\s\-\.]+/g," ");
         }
 
         // Daftar stasiun publik default
@@ -741,7 +741,7 @@
             return result;
         }
 
-        // Fast Load Timeseries (Teroptimasi Cepat)
+        // Fast Load Timeseries dengan Pemetaan Universal untuk Mengatasi Supadio & BRIN
         async function fetchAllTimeseries(forceReload = false) {
             if (!forceReload && window.allTimeseriesCache.length > 0) {
                 return window.allTimeseriesCache;
@@ -750,7 +750,7 @@
                 .from('timeseries_all')
                 .select('station, dose, time')
                 .order('time', { ascending: false })
-                .limit(5000);
+                .limit(10000);
 
             if (error) {
                 console.error("Error fetching timeseries:", error.message);
@@ -764,16 +764,26 @@
             let data = await fetchAllTimeseries();
             var latest = {};
             (data || []).forEach(r=>{
-                var key = normalizeName(r.station);
+                var rawSt = r.station || "";
+                var key = normalizeName(rawSt);
                 var t = new Date(r.time);
                 var v = parseFloat(r.dose);
                 if(isNaN(v)) return;
+
+                // Tangkap variasi khusus Supadio/BRIN agar selalu terindeks dengan benar
+                if(key.includes("supadio") || key.includes("brin")){
+                    latest["supadio"] = latest["supadio"] || { dose: v, time: t, timeStr: r.time, name: rawSt };
+                    if(t > latest["supadio"].time){
+                        latest["supadio"] = { dose: v, time: t, timeStr: r.time, name: rawSt };
+                    }
+                }
+
                 if(!latest[key] || t > latest[key].time){
                     latest[key] = {
                         dose: v,
                         time: t,
                         timeStr: r.time,
-                        name: r.station   
+                        name: rawSt   
                     };
                 }
             });
@@ -784,7 +794,6 @@
         async function loadCSV(){
             showLoadingOverlay("Memuat data stasiun...");
 
-            // Jalankan paralel fetching profile & timeseries untuk memangkas waktu loading hingga 80%
             let fetchProfilePromise = loadProfile();
             let fetchPermissionsPromise = (async () => {
                 if (!currentUser) return publicStations;
@@ -830,6 +839,13 @@
                 if (filterOnlyOnline) {
                     let profStatus = (prof.Status || "").toString().trim().toLowerCase();
                     if (profStatus !== 'online') return;
+                }
+
+                // Mapping tambahan khusus Supadio dan BRIN agar terbaca sempurna
+                if(normName.includes("supadio") || normName.includes("brin")){
+                    if(window.latestTS["supadio"] && !window.latestTS[profKey]){
+                        window.latestTS[profKey] = window.latestTS["supadio"];
+                    }
                 }
 
                 window.stationIndex[profKey] = {
@@ -898,6 +914,9 @@
 
                 var key = normalizeName(stationName);
                 var ts = window.latestTS[key];
+                if(!ts && (key.includes("supadio") || key.includes("brin"))){
+                    ts = window.latestTS["supadio"];
+                }
                 var dose = row.dose !== undefined ? row.dose : (ts ? ts.dose : null);
 
                 if(isNaN(lat)||isNaN(lon)) return;
@@ -913,10 +932,12 @@
 
                 var popupContent = "";
                 if(row.count){
-                    var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'><b>Aggregated Stations ("+row.count+")</b><br><br>";
+                    // POIN 1: Menghilangkan tulisan "Aggregated Stations (x)" pada pop-up
+                    var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'>";
                     row.stations.forEach(s=>{
                         var k = normalizeName(s.name);
                         var tss = window.latestTS[k];
+                        if(!tss && (k.includes("supadio") || k.includes("brin"))) tss = window.latestTS["supadio"];
                         var doseText = tss ? tss.dose.toFixed(2)+" nSv/h" : "No data";
                         var timeText = tss ? tss.timeStr : "-";
 
@@ -944,8 +965,19 @@
 
                 hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
                 hex.on('click', function(){ this.openPopup(); });
-                hex.addTo(onlineLayer);
-                hex.bringToFront();
+                
+                // POIN 2: Pengaturan Layer/Penumpukan Hexagon (Normal/Online ditampilkan di lapisan paling atas)
+                let profileObj = window.profileIndex[key];
+                let stStatus = (profileObj?.Status || "online").toLowerCase();
+                
+                if(stStatus === "online"){
+                    hex.addTo(onlineLayer);
+                    hex.bringToFront(); // Menempatkan heksagon normal/online di posisi paling atas saat bertumpuk
+                } else if(stStatus === "maintenance"){
+                    hex.addTo(maintenanceLayer);
+                } else {
+                    hex.addTo(offlineLayer);
+                }
 
                 if(!row.count || map.getZoom() >= 5){
                     var labelOffsetLat = lat + (radius/111111)*0.9;
@@ -982,7 +1014,7 @@
                 const name = st["NAMA UNIT"] || st["station"] || k;
                 if(searchVal && !name.toLowerCase().includes(searchVal)) return;
 
-                const ts = window.latestTS[k];
+                const ts = window.latestTS[k] || (normalizeName(name).includes("supadio") || normalizeName(name).includes("brin") ? window.latestTS["supadio"] : null);
                 const dose = ts ? ts.dose.toFixed(2) + " nSv/h" : "No data";
                 const profile = window.profileIndex[k];
                 const status = (profile?.Status || "online").toLowerCase();
@@ -1193,6 +1225,9 @@
                 "<b>Status:</b> "+statusText;
 
             let cleanSearch = station.trim().replace(/%/g, '');
+            if(key.includes("supadio") || key.includes("brin")){
+                cleanSearch = "Supadio";
+            }
 
             let { data, error } = await supabaseClient
                 .from('timeseries_all')
@@ -1838,7 +1873,6 @@
             const modalTitle = document.getElementById('modal-title-text');
 
             if (currentUser) {
-                // Tampilkan info pengguna jika sudah logged in
                 formContainer.classList.add('hidden');
                 infoContainer.classList.remove('hidden');
                 if(modalTitle) modalTitle.innerText = "Informasi Sesi Pengguna";
@@ -1853,7 +1887,6 @@
                 }
                 document.getElementById('user-info-access').innerText = accessText;
             } else {
-                // Tampilkan form login jika belum logged in
                 formContainer.classList.remove('hidden');
                 infoContainer.classList.add('hidden');
                 if(modalTitle) modalTitle.innerText = "Autentikasi Pengguna I-RDMS";
