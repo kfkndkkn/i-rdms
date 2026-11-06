@@ -792,7 +792,7 @@
         }
 
         async function loadCSV(){
-            showLoadingOverlay("Memuat data stasiun...");
+            showLoadingOverlay("Memuat profil stasiun & izin akses...");
 
             let fetchProfilePromise = loadProfile();
             let fetchPermissionsPromise = (async () => {
@@ -817,6 +817,7 @@
             let [_, allowedStations] = await Promise.all([fetchProfilePromise, fetchPermissionsPromise]);
             let filterOnlyOnline = !currentUser;
 
+            showLoadingOverlay("Memuat data telemetry timeseries...");
             await loadLatestTimeseries();
 
             window.stationIndex = {};
@@ -855,8 +856,9 @@
                 };
             });
 
+            showLoadingOverlay("Merender peta & grafik statistik...");
             renderMap();
-            updateSidePanelUI();
+            await updateSidePanelUI(); // Menunggu hingga sidebar & chart 7 hari selesai dirender sepenuhnya
             hideLoadingOverlay();
         }
 
@@ -1058,7 +1060,7 @@
             }
         }
 
-        function updateSidePanelUI() {
+        async function updateSidePanelUI() {
             var latestTime = null;
             Object.values(window.latestTS).forEach(v=>{
                 if(!latestTime || v.time > latestTime){ latestTime = v.time; }
@@ -1089,13 +1091,13 @@
                 document.getElementById("minStation").innerHTML = minRow.station;
             }
 
-            drawAvgChart();
+            await drawAvgChart(); // Memastikan chart selesai digambar sebelum lanjut
             updateStatusTicker();
         }
 
         function updateSidePanel(){
-            loadLatestTimeseries(()=>{
-                updateSidePanelUI();
+            loadLatestTimeseries(async ()=>{
+                await updateSidePanelUI();
             });
         }
 
