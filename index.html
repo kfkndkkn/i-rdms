@@ -1229,22 +1229,63 @@
                 cleanSearch = "Supadio";
             }
 
-            let { data, error } = await supabaseClient
-                .from('timeseries_all')
-                .select('station, dose, time')
-                .ilike('station', `%${cleanSearch}%`)
-                .order('time', { ascending: true })
-                .limit(2000);
+            // Ambil data terbaru terlebih dahulu. Query ascending + limit(2000)
+            // sebelumnya mengambil data paling lama, bukan data terbaru.
+            // Pagination menghindari batas jumlah baris per request Supabase.
+            const pageSize = 1000;
+            let offset = 0;
+            let fetchedRows = [];
+            let latestTimestamp = null;
+            let cutoffDate = null;
+            let reachedOlderData = false;
 
-            if (error) {
-                console.error("Error fetching timeseries for station:", error);
-                return;
+            while (!reachedOlderData) {
+                const { data, error } = await supabaseClient
+                    .from('timeseries_all')
+                    .select('station, dose, time')
+                    .ilike('station', `%${cleanSearch}%`)
+                    .order('time', { ascending: false })
+                    .range(offset, offset + pageSize - 1);
+
+                if (error) {
+                    console.error("Error fetching timeseries for station:", error);
+                    return;
+                }
+
+                const page = data || [];
+                if (page.length === 0) break;
+                fetchedRows.push(...page);
+
+                if (latestTimestamp === null) {
+                    latestTimestamp = new Date(page[0].time);
+                    if (Number.isNaN(latestTimestamp.getTime())) {
+                        console.error("Format kolom time tidak dapat dibaca:", page[0].time);
+                        return;
+                    }
+                    // Satu bulan kalender ke belakang dihitung dari timestamp terbaru.
+                    cutoffDate = new Date(latestTimestamp);
+                    cutoffDate.setMonth(cutoffDate.getMonth() - 1);
+                }
+
+                const oldestOnPage = new Date(page[page.length - 1].time);
+                if (oldestOnPage < cutoffDate || page.length < pageSize) {
+                    reachedOlderData = true;
+                } else {
+                    offset += pageSize;
+                }
             }
 
-            currentStationRawData = (data || []).filter(r=>{
-                var v = parseFloat(r.dose);
-                return !isNaN(v);
-            });
+            // Grafik hanya menampilkan satu bulan terakhir dari data paling baru.
+            currentStationRawData = fetchedRows
+                .filter(r => {
+                    const value = parseFloat(r.dose);
+                    const timestamp = new Date(r.time);
+                    return !Number.isNaN(value) &&
+                           !Number.isNaN(timestamp.getTime()) &&
+                           timestamp >= cutoffDate &&
+                           timestamp <= latestTimestamp;
+                })
+                .sort((a, b) => new Date(a.time) - new Date(b.time));
 
             processTimeSeriesData();
         }
@@ -1305,6 +1346,9 @@
             slider.max = lastIndex;
             slider.step = 1;
             slider.value = lastIndex;
+            slider.oninput = function(){
+                updateChartUnified(parseInt(this.value, 10));
+            };
 
             isFiltered = false;
             updateChartUnified(lastIndex);
