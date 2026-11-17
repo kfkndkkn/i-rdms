@@ -399,7 +399,14 @@
                 </div>
 
                 <div class="flex-1 flex flex-col gap-4 min-w-0">
-                    <div id="datePickerBar" class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-end gap-3 text-xs">
+                    <div id="datePickerBar" class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold text-slate-600">Granularity:</span>
+                            <div class="flex gap-1">
+                                <button id="btnDaily" onclick="setGranularity('daily')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold text-xs">Daily</button>
+                                <button id="btnHourly" onclick="setGranularity('hourly')" class="px-2.5 py-1 bg-slate-200 text-slate-700 rounded font-bold text-xs">Hourly</button>
+                            </div>
+                        </div>
                         <div class="flex items-center gap-3">
                             <div class="flex items-center gap-1">
                                 <label class="font-semibold text-slate-600">Dari:</label>
@@ -587,37 +594,25 @@
             renderMap();
         });
 
-        // Pengaturan Layer Control dinamis berdasarkan status login
-        var baseLayers = {
-            "Esri Satellite": esriSat,
-            "OpenStreetMap": osm,
-            "Dark": dark,
-            "Google Hybrid": googleHybrid,
-            "Google Satellite": googleSat,
-            "ESRI Light Gray": esriGray
-        };
-
-        var overlayLayers = {
-            "ESRI Labels": esriGrayLabel,
-            "Station Polygons": polygonLayer,
-            "Station Labels": labelLayer
-        };
-
-        if (currentUser) {
-            overlayLayers["Online"] = onlineLayer;
-            overlayLayers["Offline"] = offlineLayer;
-            overlayLayers["Maintenance"] = maintenanceLayer;
-            map.addLayer(onlineLayer);
-            map.addLayer(offlineLayer);
-            map.addLayer(maintenanceLayer);
-        } else {
-            map.addLayer(onlineLayer);
-            // Sembunyikan offline & maintenance layer dari peta saat belum login
-            if (map.hasLayer(offlineLayer)) map.removeLayer(offlineLayer);
-            if (map.hasLayer(maintenanceLayer)) map.removeLayer(maintenanceLayer);
-        }
-
-        var layerControl = L.control.layers(baseLayers, overlayLayers, { position: 'topright' }).addTo(map);
+        L.control.layers(
+            {
+                "Esri Satellite": esriSat,
+                "OpenStreetMap": osm,
+                "Dark": dark,
+                "Google Hybrid": googleHybrid,
+                "Google Satellite": googleSat,
+                "ESRI Light Gray": esriGray
+            },
+            {
+                "ESRI Labels": esriGrayLabel,
+                "Station Polygons": polygonLayer,
+                "Online": onlineLayer,
+                "Offline": offlineLayer,
+                "Maintenance": maintenanceLayer,
+                "Station Labels": labelLayer
+            },
+            { position: 'topright' }
+        ).addTo(map);
 
         function getRadius(){
             var zoom = map.getZoom();
@@ -746,6 +741,7 @@
             return result;
         }
 
+        // Fast Load Timeseries dengan Pemetaan Universal untuk Mengatasi Supadio & BRIN
         async function fetchAllTimeseries(forceReload = false) {
             if (!forceReload && window.allTimeseriesCache.length > 0) {
                 return window.allTimeseriesCache;
@@ -774,6 +770,7 @@
                 var v = parseFloat(r.dose);
                 if(isNaN(v)) return;
 
+                // Tangkap variasi khusus Supadio/BRIN agar selalu terindeks dengan benar
                 if(key.includes("supadio") || key.includes("brin")){
                     latest["supadio"] = latest["supadio"] || { dose: v, time: t, timeStr: r.time, name: rawSt };
                     if(t > latest["supadio"].time){
@@ -844,6 +841,7 @@
                     if (profStatus !== 'online') return;
                 }
 
+                // Mapping tambahan khusus Supadio dan BRIN agar terbaca sempurna
                 if(normName.includes("supadio") || normName.includes("brin")){
                     if(window.latestTS["supadio"] && !window.latestTS[profKey]){
                         window.latestTS[profKey] = window.latestTS["supadio"];
@@ -934,6 +932,7 @@
 
                 var popupContent = "";
                 if(row.count){
+                    // POIN 1: Menghilangkan tulisan "Aggregated Stations (x)" pada pop-up
                     var listHTML = "<div style='max-height:180px;overflow-y:auto;padding:8px;'>";
                     row.stations.forEach(s=>{
                         var k = normalizeName(s.name);
@@ -967,12 +966,13 @@
                 hex.bindPopup(popupContent,{maxWidth:280,minWidth:180});
                 hex.on('click', function(){ this.openPopup(); });
                 
+                // POIN 2: Pengaturan Layer/Penumpukan Hexagon (Normal/Online ditampilkan di lapisan paling atas)
                 let profileObj = window.profileIndex[key];
                 let stStatus = (profileObj?.Status || "online").toLowerCase();
                 
                 if(stStatus === "online"){
                     hex.addTo(onlineLayer);
-                    hex.bringToFront();
+                    hex.bringToFront(); // Menempatkan heksagon normal/online di posisi paling atas saat bertumpuk
                 } else if(stStatus === "maintenance"){
                     hex.addTo(maintenanceLayer);
                 } else {
@@ -1177,10 +1177,12 @@
         var allLabels = [], allValues = [], filteredLabels = [], filteredValues = [];
         var isFiltered = false;
         var currentStationRawData = [];
-        var dailyLabels = [], dailyValues = [];
+        var currentGranularity = 'daily';
+        var dailyLabels = [], dailyValues = [], hourlyLabels = [], hourlyValues = [];
 
         async function openTS(station){
             isFiltered = false;
+            currentGranularity = 'daily';
             var key = normalizeName(station);
             var profileData = window.profileIndex[key];
 
@@ -1227,6 +1229,9 @@
                 cleanSearch = "Supadio";
             }
 
+            // Ambil data terbaru terlebih dahulu. Query ascending + limit(2000)
+            // sebelumnya mengambil data paling lama, bukan data terbaru.
+            // Pagination menghindari batas jumlah baris per request Supabase.
             const pageSize = 1000;
             let offset = 0;
             let fetchedRows = [];
@@ -1257,6 +1262,7 @@
                         console.error("Format kolom time tidak dapat dibaca:", page[0].time);
                         return;
                     }
+                    // Satu bulan kalender ke belakang dihitung dari timestamp terbaru.
                     cutoffDate = new Date(latestTimestamp);
                     cutoffDate.setMonth(cutoffDate.getMonth() - 1);
                 }
@@ -1269,6 +1275,7 @@
                 }
             }
 
+            // Grafik hanya menampilkan satu bulan terakhir dari data paling baru.
             currentStationRawData = fetchedRows
                 .filter(r => {
                     const value = parseFloat(r.dose);
@@ -1285,11 +1292,15 @@
 
         function processTimeSeriesData(){
             dailyLabels = []; dailyValues = [];
+            hourlyLabels = []; hourlyValues = [];
             var dailyGroup = {};
 
             currentStationRawData.forEach(r=>{
                 var t = new Date(r.time);
                 var v = parseFloat(r.dose);
+
+                hourlyLabels.push(r.time);
+                hourlyValues.push(v);
 
                 var dayKey = r.time.includes(" ") ? r.time.split(" ")[0] : t.toISOString().split("T")[0];
                 if(!dailyGroup[dayKey]) dailyGroup[dayKey] = [];
@@ -1303,8 +1314,13 @@
                 dailyValues.push(avg);
             });
 
-            allLabels = dailyLabels;
-            allValues = dailyValues;
+            if(currentGranularity === 'daily'){
+                allLabels = dailyLabels;
+                allValues = dailyValues;
+            } else {
+                allLabels = hourlyLabels;
+                allValues = hourlyValues;
+            }
 
             if(allValues.length===0){
                 document.getElementById("tsStats").innerHTML="No data available";
@@ -1336,6 +1352,51 @@
 
             isFiltered = false;
             updateChartUnified(lastIndex);
+            updateGranularityButtons();
+        }
+
+        function setGranularity(gran){
+            currentGranularity = gran;
+            isFiltered = false;
+
+            if(currentGranularity === 'daily'){
+                allLabels = dailyLabels;
+                allValues = dailyValues;
+            } else {
+                allLabels = hourlyLabels;
+                allValues = hourlyValues;
+            }
+
+            if(allValues.length === 0) return;
+
+            var slider = document.getElementById("timeSlider");
+            var lastIndex = allValues.length - 1;
+
+            slider.min = 0;
+            slider.max = lastIndex;
+            slider.value = lastIndex;
+
+            if(allLabels.length > 0){
+                document.getElementById("dateFrom").value = allLabels[0].split(" ")[0];
+                document.getElementById("dateTo").value = allLabels[allLabels.length-1].split(" ")[0];
+            }
+
+            updateChartUnified(lastIndex);
+            updateGranularityButtons();
+        }
+
+        function updateGranularityButtons(){
+            var btnDaily = document.getElementById("btnDaily");
+            var btnHourly = document.getElementById("btnHourly");
+            if(!btnDaily || !btnHourly) return;
+
+            if(currentGranularity === 'daily'){
+                btnDaily.className = "px-2.5 py-1 bg-sky-600 text-white rounded font-bold text-xs";
+                btnHourly.className = "px-2.5 py-1 bg-slate-200 text-slate-700 rounded font-bold text-xs";
+            } else {
+                btnHourly.className = "px-2.5 py-1 bg-sky-600 text-white rounded font-bold text-xs";
+                btnDaily.className = "px-2.5 py-1 bg-slate-200 text-slate-700 rounded font-bold text-xs";
+            }
         }
 
         function applyDateFilter(){
@@ -1347,14 +1408,17 @@
             var toDate = new Date(toVal);
             toDate.setHours(23, 59, 59, 999);
 
+            let sourceLabels = (currentGranularity === 'daily') ? dailyLabels : hourlyLabels;
+            let sourceValues = (currentGranularity === 'daily') ? dailyValues : hourlyValues;
+
             filteredLabels = [];
             filteredValues = [];
 
-            for(let i=0; i<dailyLabels.length; i++){
-                let t = new Date(dailyLabels[i]);
+            for(let i=0; i<sourceLabels.length; i++){
+                let t = new Date(sourceLabels[i]);
                 if(t >= fromDate && t <= toDate){
-                    filteredLabels.push(dailyLabels[i]);
-                    filteredValues.push(dailyValues[i]);
+                    filteredLabels.push(sourceLabels[i]);
+                    filteredValues.push(sourceValues[i]);
                 }
             }
 
@@ -1922,7 +1986,7 @@
                 localStorage.setItem('currentUser', JSON.stringify(currentUser));
                 updateAuthUI();
                 closeLoginModal();
-                location.reload(); // Muat ulang halaman agar kontrol layer peta memperbarui opsi online/offline/maintenance secara dinamis
+                loadCSV();
             }
         }
 
@@ -1931,7 +1995,7 @@
             localStorage.removeItem('currentUser');
             updateAuthUI();
             closeLoginModal();
-            location.reload();
+            loadCSV();
         }
 
         function updateAuthUI() {
@@ -1952,7 +2016,7 @@
                 let roleLower = (currentUser.role || "").toLowerCase();
                 if (roleLower === 'admin' || (currentUser.username && currentUser.username.toLowerCase().includes('kfkndkkn'))) {
                     if(openDonutBtn) openDonutBtn.classList.remove('hidden');
-                    if(reportBtn) reportBtn.`,classList?.remove('hidden');
+                    if(reportBtn) reportBtn.classList.remove('hidden');
                 } else {
                     if(openDonutBtn) openDonutBtn.classList.add('hidden');
                     if(reportBtn) reportBtn.classList.add('hidden');
