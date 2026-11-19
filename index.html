@@ -486,6 +486,43 @@
         window.allTimeseriesCache = [];
         window.lastChartData = "";
 
+        // Memeriksa apakah sebuah stasiun termasuk dalam stasiun aktif/diizinkan (saat belum login = stasiun publik online)
+        function isStationInActiveScope(key, rawName = "") {
+            if (window.stationIndex[key]) return true;
+            const normRaw = normalizeName(rawName);
+            if (normRaw && window.stationIndex[normRaw]) return true;
+            if (key === "supadio" || normRaw.includes("supadio") || normRaw.includes("brin")) {
+                return Object.keys(window.stationIndex).some(k => k.includes("supadio") || k.includes("brin"));
+            }
+            return false;
+        }
+
+        // Mengambil daftar pembacaan terbaru khusus untuk stasiun yang ada di window.stationIndex
+        function getScopedLatestEntries() {
+            const activeKeys = Object.keys(window.stationIndex);
+            const entries = [];
+
+            activeKeys.forEach(k => {
+                const st = window.stationIndex[k];
+                const displayName = st?.["NAMA UNIT"] || st?.["station"] || k;
+                let ts = window.latestTS[k];
+                if (!ts && (k.includes("supadio") || k.includes("brin"))) {
+                    ts = window.latestTS["supadio"];
+                }
+                if (ts && !isNaN(ts.dose)) {
+                    entries.push({
+                        key: k,
+                        station: displayName,
+                        dose: ts.dose,
+                        time: ts.time,
+                        timeStr: ts.timeStr
+                    });
+                }
+            });
+
+            return entries;
+        }
+
         const zoomOffsets = {
             "cilacap":      {lat:-0.12, lon:-0.18},
             "banjarnegara": {lat: 0.12, lon: 0.18}
@@ -712,6 +749,7 @@
                 g.stations.forEach(s=>{
                     var key = normalizeName(s.name);
                     var ts = window.latestTS[key];
+                    if(!ts && (key.includes("supadio") || key.includes("brin"))) ts = window.latestTS["supadio"];
                     if(ts){ sum += ts.dose; count++; }
                 });
                 var avgDose = count > 0 ? sum / count : (g.count > 0 ? g.doseSum / g.count : null);
@@ -845,6 +883,7 @@
                 };
             });
 
+            window.lastChartData = "";
             renderMap();
             updateSidePanelUI();
             hideLoadingOverlay();
@@ -1047,9 +1086,15 @@
         }
 
         function updateSidePanelUI() {
+            const scopedEntries = getScopedLatestEntries();
             var latestTime = null;
-            Object.values(window.latestTS).forEach(v=>{
-                if(!latestTime || v.time > latestTime){ latestTime = v.time; }
+
+            scopedEntries.forEach(item => {
+                if (item.time && !isNaN(item.time.getTime())) {
+                    if (!latestTime || item.time > latestTime) {
+                        latestTime = item.time;
+                    }
+                }
             });
 
             if(latestTime){
@@ -1060,21 +1105,23 @@
                     hour:"2-digit", minute:"2-digit", second:"2-digit",
                     hour12:false, timeZone:"Asia/Jakarta"
                 }) + " WIB";
+            } else {
+                document.getElementById("lastUpdate").innerHTML = "Last Updated : -";
             }
 
-            var data = Object.keys(window.latestTS).map(k=>({
-                station: window.latestTS[k].name,
-                dose: window.latestTS[k].dose
-            }));
-
-            if(data.length > 0){
-                var maxRow = data.reduce((a,b)=> a.dose > b.dose ? a : b);
-                var minRow = data.reduce((a,b)=> a.dose < b.dose ? a : b);
+            if(scopedEntries.length > 0){
+                var maxRow = scopedEntries.reduce((a,b)=> a.dose > b.dose ? a : b);
+                var minRow = scopedEntries.reduce((a,b)=> a.dose < b.dose ? a : b);
 
                 document.getElementById("maxValue").innerHTML = maxRow.dose.toFixed(2);
                 document.getElementById("maxStation").innerHTML = maxRow.station;
                 document.getElementById("minValue").innerHTML = minRow.dose.toFixed(2);
                 document.getElementById("minStation").innerHTML = minRow.station;
+            } else {
+                document.getElementById("maxValue").innerHTML = "-";
+                document.getElementById("maxStation").innerHTML = "-";
+                document.getElementById("minValue").innerHTML = "-";
+                document.getElementById("minStation").innerHTML = "-";
             }
 
             drawAvgChart();
@@ -1091,13 +1138,12 @@
             let data = window.allTimeseriesCache.length > 0 ? window.allTimeseriesCache : await fetchAllTimeseries();
 
             var grouped = {};
-            const activeStations = new Set(Object.keys(window.stationIndex));
 
             (data || []).forEach(r=>{
                 var v = parseFloat(r.dose);
                 if(!isNaN(v)){
                     var key = normalizeName(r.station);
-                    if(activeStations.size > 0 && !activeStations.has(key)) return;
+                    if(!isStationInActiveScope(key, r.station)) return;
                     if(!grouped[r.station]) grouped[r.station] = [];
                     grouped[r.station].push(v);
                 }
@@ -1119,7 +1165,7 @@
             var labels = top.map(r=>r.name);
             var values = top.map(r=>r.avg);
 
-            var currentData = JSON.stringify({ values: values, topN: topN });
+            var currentData = JSON.stringify({ values: values, labels: labels, topN: topN });
             if(window.lastChartData === currentData) return;
             window.lastChartData = currentData;
 
@@ -1792,12 +1838,15 @@
         legend.addTo(map);
 
         function updateStatusTicker(){
+            const scopedEntries = getScopedLatestEntries();
             let maxDose = -1;
             let latestTime = null;
 
-            Object.values(window.latestTS).forEach(v=>{
-                if(v.dose > maxDose){ maxDose = v.dose; }
-                if(!latestTime || v.time > latestTime){ latestTime = v.time; }
+            scopedEntries.forEach(item=>{
+                if(item.dose > maxDose){ maxDose = item.dose; }
+                if(item.time && !isNaN(item.time.getTime())){
+                    if(!latestTime || item.time > latestTime){ latestTime = item.time; }
+                }
             });
 
             if(maxDose < 0) return;
